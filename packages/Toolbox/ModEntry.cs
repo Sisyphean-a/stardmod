@@ -16,8 +16,10 @@ public sealed class ModEntry : Mod
     public override void Entry(IModHelper helper)
     {
         Config = helper.ReadConfig<ModConfig>();
+        Harmony harmony = new(ModManifest.UniqueID);
         LightRadiusFeature.Initialize(Config, ModManifest);
-        LightRadiusFeature.ApplyPatches(new Harmony(ModManifest.UniqueID));
+        LightRadiusFeature.ApplyPatches(harmony);
+        FarmMusicFeature.ApplyPatches(harmony);
 
         helper.Events.GameLoop.GameLaunched += OnGameLaunched;
         helper.Events.Player.Warped += OnPlayerWarped;

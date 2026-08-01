@@ -14,8 +14,11 @@ code-paths:
 
 **光源半径倍率**：家具光源或普通物体光源相对其基础半径的放大倍数。
 
+**农场音乐保持**：农场音乐播放器正在播放时，农场与非住宅农场建筑之间换场不停止当前音乐。
+
 ## 稳定规则
 
 - 动物自动抚摸只作用于农场和畜棚，并受 `CheckInterval`、`ScanRange`、`wasPet` 和友好度限制。
 - 家具光源使用 `FurnitureLightRadius`；非家具光源使用 `ObjectLightRadius`。
+- 农场音乐保持不作用于 `FarmHouse` 或其 `Cabin` 子类。
 - 配置重置和保存作用于同一个工具箱配置对象。

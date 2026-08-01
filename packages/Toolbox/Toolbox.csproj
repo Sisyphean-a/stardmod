@@ -21,6 +21,10 @@
       <HintPath>$(GamePath)\Stardew Valley.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="StardewValley.GameData">
+      <HintPath>$(GamePath)\StardewValley.GameData.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="MonoGame.Framework">
       <HintPath>$(GamePath)\MonoGame.Framework.dll</HintPath>
       <Private>false</Private>
@@ -40,6 +44,7 @@
     <Error Condition="!Exists('$(GamePath)\StardewModdingAPI.dll')" Text="SMAPI assembly was not found under '$(GamePath)'." />
     <Error Condition="!Exists('$(GamePath)\smapi-internal\SMAPI.Toolkit.CoreInterfaces.dll')" Text="SMAPI toolkit interfaces assembly was not found under '$(GamePath)\smapi-internal'." />
     <Error Condition="!Exists('$(GamePath)\Stardew Valley.dll')" Text="Stardew Valley assembly was not found under '$(GamePath)'." />
+    <Error Condition="!Exists('$(GamePath)\StardewValley.GameData.dll')" Text="Stardew Valley GameData assembly was not found under '$(GamePath)'." />
     <Error Condition="!Exists('$(GamePath)\MonoGame.Framework.dll')" Text="MonoGame assembly was not found under '$(GamePath)'." />
     <Error Condition="!Exists('$(GamePath)\smapi-internal\0Harmony.dll')" Text="Harmony assembly was not found under '$(GamePath)\smapi-internal'." />
     <Error Condition="!Exists('$(GamePath)\Mods\GenericModConfigMenu\GenericModConfigMenu.dll')" Text="Generic Mod Config Menu assembly was not found under '$(GamePath)\Mods\GenericModConfigMenu'." />
