@@ -9,6 +9,7 @@ scope: workspace
 ## 作用域
 
 - [context:toolbox](contexts/toolbox.md)：工具箱内轻量游戏便利功能。代码位置：`packages/Toolbox`。
+- [context:horse-follower](contexts/horse-follower.md)：玩家下马后的马匹跟随生命周期。代码位置：`packages/HorseFollower`。
 
 ## 通用语言
 

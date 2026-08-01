@@ -9,7 +9,8 @@ scope: workspace
 ## 范围
 
 - [package:toolbox](packages/toolbox.md)：合并简单实用功能的“工具箱”包，代码位置为 `packages/Toolbox`。
-- 未来较大型功能：在 `packages/<name>` 建立独立包，并拥有独立的 SMAPI manifest、UniqueID 和输出目录。
+- [package:horse-follower](packages/horse-follower.md)：独立的下马后马匹跟随包，代码位置为 `packages/HorseFollower`。
+- 未来较大型功能或用户明确指定独立边界的功能：在 `packages/<name>` 建立独立包，并拥有独立的 SMAPI manifest、UniqueID 和输出目录。
 
 ## 共享机制
 

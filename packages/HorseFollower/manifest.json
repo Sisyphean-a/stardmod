@@ -1,0 +1,10 @@
+{
+  "Name": "马匹跟随",
+  "Author": "xixifu",
+  "Version": "1.0.0",
+  "Description": "下马后让马在当前场景跟随玩家。",
+  "UniqueID": "xixifu.HorseFollower",
+  "EntryDll": "HorseFollower.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}
