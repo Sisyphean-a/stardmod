@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>Toolbox</AssemblyName>
+    <RootNamespace>Toolbox</RootNamespace>
+    <GamePath Condition="'$(GamePath)' == ''">$(StardewValleyPath)</GamePath>
+    <ModOutputPath>$(MSBuildProjectDirectory)\dist\</ModOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="StardewModdingAPI">
+      <HintPath>$(GamePath)\StardewModdingAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SMAPI.Toolkit.CoreInterfaces">
+      <HintPath>$(GamePath)\smapi-internal\SMAPI.Toolkit.CoreInterfaces.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Stardew Valley">
+      <HintPath>$(GamePath)\Stardew Valley.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MonoGame.Framework">
+      <HintPath>$(GamePath)\MonoGame.Framework.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(GamePath)\smapi-internal\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="GenericModConfigMenu">
+      <HintPath>$(GamePath)\Mods\GenericModConfigMenu\GenericModConfigMenu.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="ValidateGameReferences" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(GamePath)' == ''" Text="GamePath is required. Build with /p:GamePath=&lt;Stardew Valley directory&gt; or set StardewValleyPath." />
+    <Error Condition="!Exists('$(GamePath)\StardewModdingAPI.dll')" Text="SMAPI assembly was not found under '$(GamePath)'." />
+    <Error Condition="!Exists('$(GamePath)\smapi-internal\SMAPI.Toolkit.CoreInterfaces.dll')" Text="SMAPI toolkit interfaces assembly was not found under '$(GamePath)\smapi-internal'." />
+    <Error Condition="!Exists('$(GamePath)\Stardew Valley.dll')" Text="Stardew Valley assembly was not found under '$(GamePath)'." />
+    <Error Condition="!Exists('$(GamePath)\MonoGame.Framework.dll')" Text="MonoGame assembly was not found under '$(GamePath)'." />
+    <Error Condition="!Exists('$(GamePath)\smapi-internal\0Harmony.dll')" Text="Harmony assembly was not found under '$(GamePath)\smapi-internal'." />
+    <Error Condition="!Exists('$(GamePath)\Mods\GenericModConfigMenu\GenericModConfigMenu.dll')" Text="Generic Mod Config Menu assembly was not found under '$(GamePath)\Mods\GenericModConfigMenu'." />
+  </Target>
+
+  <Target Name="PackageMod" AfterTargets="Build">
+    <RemoveDir Directories="$(ModOutputPath)" />
+    <MakeDir Directories="$(ModOutputPath)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModOutputPath)" />
+    <Copy SourceFiles="$(ProjectDir)manifest.json;$(ProjectDir)config.json" DestinationFolder="$(ModOutputPath)" />
+  </Target>
+</Project>
