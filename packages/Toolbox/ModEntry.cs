@@ -9,6 +9,7 @@ namespace Toolbox;
 
 public sealed class ModEntry : Mod
 {
+    private AutomaticGatesFeature automaticGatesFeature = null!;
     private InputMethodFeature inputMethodFeature = null!;
     private ModConfig Config = null!;
     private Vector2 lastPlayerPosition;
@@ -17,16 +18,20 @@ public sealed class ModEntry : Mod
     public override void Entry(IModHelper helper)
     {
         Config = helper.ReadConfig<ModConfig>();
+        automaticGatesFeature = new AutomaticGatesFeature(() => Config);
         inputMethodFeature = new InputMethodFeature(() => Config.EnableInputMethodControl);
         Harmony harmony = new(ModManifest.UniqueID);
         LightRadiusFeature.Initialize(Config, ModManifest);
         LightRadiusFeature.ApplyPatches(harmony);
         FarmMusicFeature.ApplyPatches(harmony);
+        FenceDecayFeature.ApplyPatches(harmony);
 
         helper.Events.GameLoop.GameLaunched += OnGameLaunched;
         helper.Events.Player.Warped += OnPlayerWarped;
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
+        helper.Events.GameLoop.UpdateTicked += automaticGatesFeature.OnUpdateTicked;
         helper.Events.GameLoop.UpdateTicked += inputMethodFeature.OnUpdateTicked;
+        helper.Events.GameLoop.ReturnedToTitle += automaticGatesFeature.OnReturnedToTitle;
         helper.Events.GameLoop.ReturnedToTitle += inputMethodFeature.OnReturnedToTitle;
     }
 
@@ -72,6 +77,19 @@ public sealed class ModEntry : Mod
             value => Config.ObjectLightRadius = value,
             () => "物体光线倍率",
             () => "所有非家具光源的半径倍率。");
+        api.AddBoolOption(
+            ModManifest,
+            () => Config.EnableAutomaticGates,
+            value => Config.EnableAutomaticGates = value,
+            () => "自动开关门",
+            () => "面对关闭的大门时自动打开，离开相邻格后自动关闭。关闭后不会处理已打开的大门。");
+        api.AddNumberOption(
+            ModManifest,
+            () => Config.AutomaticGateCloseDelay,
+            value => Config.AutomaticGateCloseDelay = value,
+            () => "自动关门延迟",
+            () => "玩家离开大门相邻格后，等待多少毫秒再关门。",
+            0);
         api.AddBoolOption(
             ModManifest,
             () => Config.EnableInputMethodControl,

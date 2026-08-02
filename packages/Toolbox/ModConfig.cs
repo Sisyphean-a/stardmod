@@ -10,5 +10,9 @@ public sealed class ModConfig
 
     public float ObjectLightRadius { get; set; } = 1.5f;
 
+    public bool EnableAutomaticGates { get; set; } = true;
+
+    public int AutomaticGateCloseDelay { get; set; }
+
     public bool EnableInputMethodControl { get; set; } = true;
 }

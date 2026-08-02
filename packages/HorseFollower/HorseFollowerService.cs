@@ -221,7 +221,7 @@ internal sealed class HorseFollowerService
         horse.addedSpeed = followSpeed - horse.speed;
     }
 
-    private void UpdateFollowAnimation(Horse horse, GameTime time, int direction)
+    private void UpdateFollowAnimation(Horse horse, GameTime time, int direction, float distanceMoved)
     {
         int startFrame = direction switch
         {
@@ -243,8 +243,7 @@ internal sealed class HorseFollowerService
         horse.flip = direction == 3;
         horse.drawOffset = direction == 3 ? Vector2.Zero : new Vector2(-16f, 0f);
         horse.Sprite.loop = true;
-        float movementSpeed = horse.speed + horse.addedSpeed;
-        float animationInterval = MathHelper.Clamp(160f - movementSpeed * 12.5f, 70f, 140f);
+        float animationInterval = MathHelper.Clamp(160f - distanceMoved * 12.5f, 70f, 140f);
         horse.Sprite.Animate(time, startFrame, 6, animationInterval);
     }
 

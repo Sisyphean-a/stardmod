@@ -1,7 +1,7 @@
 {
   "Name": "工具箱",
-  "Author": "xixifu, irocendar",
-  "Version": "1.0.0",
+  "Author": "xixifu, irocendar, EnderTedi, Rakiin aKa ScheKaa",
+  "Version": "1.2.0",
   "Description": "整合简单实用的星露谷工具功能。",
   "UniqueID": "xixifu.Toolbox",
   "EntryDll": "Toolbox.dll",

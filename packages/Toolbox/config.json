@@ -3,5 +3,7 @@
   "ScanRange": 3,
   "FurnitureLightRadius": 1.5,
   "ObjectLightRadius": 1.5,
+  "EnableAutomaticGates": true,
+  "AutomaticGateCloseDelay": 0,
   "EnableInputMethodControl": true
 }

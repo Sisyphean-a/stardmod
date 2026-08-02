@@ -16,13 +16,17 @@ internal sealed class HorseFollowController : PathFindController
         new(1, 0),
         new(-1, 0),
         new(0, 1),
-        new(0, -1)
+        new(0, -1),
+        new(1, 1),
+        new(1, -1),
+        new(-1, 1),
+        new(-1, -1)
     };
 
     private readonly Horse horse;
     private readonly Vector2 targetPosition;
     private readonly float stoppingDistancePixels;
-    private readonly Action<Horse, GameTime, int> animate;
+    private readonly Action<Horse, GameTime, int, float> animate;
     private readonly int initialWaypointCount;
 
     internal HorseFollowController(
@@ -31,7 +35,7 @@ internal sealed class HorseFollowController : PathFindController
         Point targetTile,
         Vector2 targetPosition,
         float stoppingDistancePixels,
-        Action<Horse, GameTime, int> animate)
+        Action<Horse, GameTime, int, float> animate)
         : base(CreatePath(horse, location, targetTile, targetPosition, stoppingDistancePixels), location, horse, targetTile)
     {
         this.horse = horse;
@@ -59,7 +63,7 @@ internal sealed class HorseFollowController : PathFindController
             return false;
 
         Vector2 previousPosition = horse.Position;
-        int direction = MoveAlongPath(time);
+        (int direction, float distanceMoved) = MoveAlongPath();
         if (horse.Position.Equals(previousPosition))
         {
             pausedTimer += time.ElapsedGameTime.Milliseconds;
@@ -68,17 +72,18 @@ internal sealed class HorseFollowController : PathFindController
         else
         {
             pausedTimer = 0;
-            animate(horse, time, direction);
+            animate(horse, time, direction, distanceMoved);
         }
 
         return !HasPath || IsStuck || IsWithinStoppingDistance();
     }
 
-    // Flow: spend the full frame movement budget, including across waypoint boundaries, so the horse never pauses per tile.
-    private int MoveAlongPath(GameTime time)
+    // Flow: spend the full update movement budget, including across diagonal waypoints, without per-tile pauses.
+    private (int Direction, float DistanceMoved) MoveAlongPath()
     {
         float remainingMovement = GetMovementDistance();
         int lastDirection = horse.FacingDirection;
+        float distanceMoved = 0f;
 
         while (remainingMovement > 0f && HasPath && !IsWithinStoppingDistance())
         {
@@ -94,84 +99,105 @@ internal sealed class HorseFollowController : PathFindController
             Point waypoint = pathToEndPoint.Peek();
             Vector2 target = GetTileCenter(waypoint);
             Vector2 offset = target - horse.getStandingPosition();
-            int direction = GetDirection(offset);
-            float distanceOnAxis = direction is 1 or 3 ? Math.Abs(offset.X) : Math.Abs(offset.Y);
-            float step = Math.Min(remainingMovement, distanceOnAxis);
-            if (step <= 0f || !TryMove(direction, step))
+            float step = Math.Min(
+                remainingMovement,
+                Math.Max(Math.Abs(offset.X), Math.Abs(offset.Y)));
+            Vector2 requestedMotion = new(
+                MathHelper.Clamp(offset.X, -step, step),
+                MathHelper.Clamp(offset.Y, -step, step));
+            if (step <= 0f || !TryMove(requestedMotion, out Vector2 actualMotion))
                 break;
 
-            remainingMovement -= step;
-            lastDirection = direction;
+            float movementSpent = Math.Max(Math.Abs(actualMotion.X), Math.Abs(actualMotion.Y));
+            remainingMovement -= movementSpent;
+            distanceMoved += actualMotion.Length();
+            lastDirection = GetDirection(actualMotion);
         }
 
-        return lastDirection;
+        return (lastDirection, distanceMoved);
     }
 
-    private bool TryMove(int direction, float distance)
+    private bool TryMove(Vector2 requestedMotion, out Vector2 actualMotion)
     {
-        Vector2 motion = direction switch
-        {
-            0 => new Vector2(0f, -distance),
-            1 => new Vector2(distance, 0f),
-            2 => new Vector2(0f, distance),
-            3 => new Vector2(-distance, 0f),
-            _ => Vector2.Zero
-        };
-        if (motion == Vector2.Zero)
+        actualMotion = Vector2.Zero;
+        if (requestedMotion == Vector2.Zero)
             return false;
-
-        Vector2 currentPosition = horse.Position;
-        Vector2 nextPosition = currentPosition + motion;
-        Rectangle nextBounds = horse.GetBoundingBox();
-        nextBounds.Offset(
-            (int)nextPosition.X - (int)currentPosition.X,
-            (int)nextPosition.Y - (int)currentPosition.Y);
 
         PathFindController? activeController = horse.controller;
         horse.controller = null;
-        bool collides;
         try
         {
-            collides = location.isCollidingPosition(
-                nextBounds,
-                Game1.viewport,
-                isFarmer: false,
-                damagesFarmer: 0,
-                glider: false,
-                character: horse,
-                pathfinding: false,
-                projectile: false,
-                ignoreCharacterRequirement: false,
-                skipCollisionEffects: true);
+            if (requestedMotion.X != 0f && requestedMotion.Y != 0f)
+            {
+                Vector2 horizontalMotion = new(requestedMotion.X, 0f);
+                Vector2 verticalMotion = new(0f, requestedMotion.Y);
+                bool horizontalBlocked = IsColliding(horizontalMotion);
+                bool verticalBlocked = IsColliding(verticalMotion);
+                if (!horizontalBlocked && !verticalBlocked && !IsColliding(requestedMotion))
+                {
+                    actualMotion = requestedMotion;
+                }
+                else if (!horizontalBlocked
+                    && (Math.Abs(requestedMotion.X) >= Math.Abs(requestedMotion.Y) || verticalBlocked))
+                {
+                    actualMotion = horizontalMotion;
+                }
+                else if (!verticalBlocked)
+                {
+                    actualMotion = verticalMotion;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                if (IsColliding(requestedMotion))
+                    return false;
+
+                actualMotion = requestedMotion;
+            }
         }
         finally
         {
             horse.controller = activeController;
         }
 
-        if (collides)
-            return false;
-
         horse.stopWithoutChangingFrame();
-        switch (direction)
-        {
-            case 0:
-                horse.SetMovingUp(true);
-                break;
-            case 1:
-                horse.SetMovingRight(true);
-                break;
-            case 2:
-                horse.SetMovingDown(true);
-                break;
-            case 3:
-                horse.SetMovingLeft(true);
-                break;
-        }
+        if (actualMotion.Y < 0f)
+            horse.SetMovingUp(true);
+        else if (actualMotion.Y > 0f)
+            horse.SetMovingDown(true);
+        if (actualMotion.X > 0f)
+            horse.SetMovingRight(true);
+        else if (actualMotion.X < 0f)
+            horse.SetMovingLeft(true);
 
-        horse.Position = nextPosition;
-        horse.FacingDirection = direction;
+        horse.Position += actualMotion;
+        horse.FacingDirection = GetDirection(actualMotion);
         return true;
+    }
+
+    private bool IsColliding(Vector2 motion)
+    {
+        Vector2 currentPosition = horse.Position;
+        Vector2 nextPosition = currentPosition + motion;
+        Rectangle nextBounds = horse.GetBoundingBox();
+        nextBounds.Offset(
+            (int)nextPosition.X - (int)currentPosition.X,
+            (int)nextPosition.Y - (int)currentPosition.Y);
+        return location.isCollidingPosition(
+            nextBounds,
+            Game1.viewport,
+            isFarmer: false,
+            damagesFarmer: 0,
+            glider: false,
+            character: horse,
+            pathfinding: false,
+            projectile: false,
+            ignoreCharacterRequirement: false,
+            skipCollisionEffects: true);
     }
 
     private float GetMovementDistance()
@@ -218,11 +244,14 @@ internal sealed class HorseFollowController : PathFindController
         horse.controller = null;
         try
         {
-            PriorityQueue<Point, int> open = new();
+            PriorityQueue<Point, (int EstimatedSteps, float RemainingDistance)> open = new();
             Dictionary<Point, int> costs = new() { [start] = 0 };
             Dictionary<Point, Point> previous = new();
             HashSet<Point> closed = new();
-            open.Enqueue(start, GetHeuristic(start, targetPosition, stoppingDistancePixels));
+            int startHeuristic = GetHeuristic(start, targetPosition, stoppingDistancePixels);
+            open.Enqueue(
+                start,
+                (startHeuristic, Vector2.Distance(GetTileCenter(start), targetPosition)));
 
             int searched = 0;
             while (open.TryDequeue(out Point current, out _))
@@ -242,7 +271,7 @@ internal sealed class HorseFollowController : PathFindController
                     Point next = new(current.X + offset.X, current.Y + offset.Y);
                     if (closed.Contains(next) || !location.isTileOnMap(next))
                         continue;
-                    if (next != start && !CanHorseStandAt(next, horseBounds, horse, location))
+                    if (!CanTraverse(current, next, horseBounds, horse, location))
                         continue;
 
                     int nextCost = costs[current] + 1;
@@ -251,8 +280,9 @@ internal sealed class HorseFollowController : PathFindController
 
                     costs[next] = nextCost;
                     previous[next] = current;
-                    int priority = nextCost + GetHeuristic(next, targetPosition, stoppingDistancePixels);
-                    open.Enqueue(next, priority);
+                    int heuristic = GetHeuristic(next, targetPosition, stoppingDistancePixels);
+                    float remainingDistance = Vector2.Distance(GetTileCenter(next), targetPosition);
+                    open.Enqueue(next, (nextCost + heuristic, remainingDistance));
                 }
             }
 
@@ -262,6 +292,29 @@ internal sealed class HorseFollowController : PathFindController
         {
             horse.controller = activeController;
         }
+    }
+
+    private static bool CanTraverse(
+        Point current,
+        Point next,
+        Rectangle horseBounds,
+        Horse horse,
+        GameLocation location)
+    {
+        if (!CanHorseStandAt(next, horseBounds, horse, location))
+            return false;
+
+        int horizontalOffset = next.X - current.X;
+        int verticalOffset = next.Y - current.Y;
+        if (horizontalOffset == 0 || verticalOffset == 0)
+            return true;
+
+        Point horizontalNeighbor = new(current.X + horizontalOffset, current.Y);
+        Point verticalNeighbor = new(current.X, current.Y + verticalOffset);
+        return location.isTileOnMap(horizontalNeighbor)
+            && location.isTileOnMap(verticalNeighbor)
+            && CanHorseStandAt(horizontalNeighbor, horseBounds, horse, location)
+            && CanHorseStandAt(verticalNeighbor, horseBounds, horse, location);
     }
 
     private static bool CanHorseStandAt(
@@ -303,9 +356,10 @@ internal sealed class HorseFollowController : PathFindController
         Vector2 targetPosition,
         float stoppingDistancePixels)
     {
+        Vector2 offset = GetTileCenter(tile) - targetPosition;
         float remainingDistance = Math.Max(
             0f,
-            Vector2.Distance(GetTileCenter(tile), targetPosition) - stoppingDistancePixels);
+            Math.Max(Math.Abs(offset.X), Math.Abs(offset.Y)) - stoppingDistancePixels);
         return (int)MathF.Ceiling(remainingDistance / 64f);
     }
 
