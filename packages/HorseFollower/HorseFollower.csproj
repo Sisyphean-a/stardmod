@@ -25,6 +25,10 @@
       <HintPath>$(GamePath)\MonoGame.Framework.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="xTile">
+      <HintPath>$(GamePath)\xTile.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <Target Name="ValidateGameReferences" BeforeTargets="ResolveReferences">
@@ -33,6 +37,7 @@
     <Error Condition="!Exists('$(GamePath)\smapi-internal\SMAPI.Toolkit.CoreInterfaces.dll')" Text="SMAPI toolkit interfaces assembly was not found under '$(GamePath)\smapi-internal'." />
     <Error Condition="!Exists('$(GamePath)\Stardew Valley.dll')" Text="Stardew Valley assembly was not found under '$(GamePath)'." />
     <Error Condition="!Exists('$(GamePath)\MonoGame.Framework.dll')" Text="MonoGame assembly was not found under '$(GamePath)'." />
+    <Error Condition="!Exists('$(GamePath)\xTile.dll')" Text="xTile assembly was not found under '$(GamePath)'." />
   </Target>
 
   <Target Name="PackageMod" AfterTargets="Build">

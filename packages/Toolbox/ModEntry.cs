@@ -9,6 +9,7 @@ namespace Toolbox;
 
 public sealed class ModEntry : Mod
 {
+    private InputMethodFeature inputMethodFeature = null!;
     private ModConfig Config = null!;
     private Vector2 lastPlayerPosition;
     private bool isInFarmArea;
@@ -16,6 +17,7 @@ public sealed class ModEntry : Mod
     public override void Entry(IModHelper helper)
     {
         Config = helper.ReadConfig<ModConfig>();
+        inputMethodFeature = new InputMethodFeature(() => Config.EnableInputMethodControl);
         Harmony harmony = new(ModManifest.UniqueID);
         LightRadiusFeature.Initialize(Config, ModManifest);
         LightRadiusFeature.ApplyPatches(harmony);
@@ -24,6 +26,8 @@ public sealed class ModEntry : Mod
         helper.Events.GameLoop.GameLaunched += OnGameLaunched;
         helper.Events.Player.Warped += OnPlayerWarped;
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
+        helper.Events.GameLoop.UpdateTicked += inputMethodFeature.OnUpdateTicked;
+        helper.Events.GameLoop.ReturnedToTitle += inputMethodFeature.OnReturnedToTitle;
     }
 
     private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
@@ -68,6 +72,12 @@ public sealed class ModEntry : Mod
             value => Config.ObjectLightRadius = value,
             () => "物体光线倍率",
             () => "所有非家具光源的半径倍率。");
+        api.AddBoolOption(
+            ModManifest,
+            () => Config.EnableInputMethodControl,
+            value => Config.EnableInputMethodControl = value,
+            () => "自动输入法控制",
+            () => "游戏操作时关闭系统输入法；游戏出现文字输入框时自动启用。关闭后立即恢复。");
     }
 
     private void OnPlayerWarped(object? sender, WarpedEventArgs e)

@@ -2,5 +2,6 @@
   "CheckInterval": 60,
   "ScanRange": 3,
   "FurnitureLightRadius": 1.5,
-  "ObjectLightRadius": 1.5
+  "ObjectLightRadius": 1.5,
+  "EnableInputMethodControl": true
 }
