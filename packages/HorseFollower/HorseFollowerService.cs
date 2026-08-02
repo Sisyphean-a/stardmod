@@ -11,8 +11,12 @@ namespace HorseFollower;
 internal sealed class HorseFollowerService
 {
     private const float StartDistancePaddingPixels = 32f;
+    private const float MinimumOutdoorExitArrivalDistancePixels = 80f;
+    private const int PathSearchNodesPerUpdate = 16;
 
     private readonly ModConfig config;
+    private readonly IMonitor monitor;
+    private readonly OutdoorWarpTracker outdoorWarpTracker;
 
     private int ReplanIntervalTicks => config.CheckInterval * 3;
 
@@ -20,6 +24,9 @@ internal sealed class HorseFollowerService
 
     private Horse? trackedHorse;
     private HorseFollowController? followController;
+    private HorsePathSearch? pathSearch;
+    private PathRequest? pathRequest;
+    private PathFailure? failedPath;
     private bool wasMounted;
     private bool followSessionActive;
     private int ticksSincePlan;
@@ -31,7 +38,7 @@ internal sealed class HorseFollowerService
     private float originalHorseAddedSpeed;
     private bool hasOriginalHorseSpeed;
 
-    internal HorseFollowerService(ModConfig config)
+    internal HorseFollowerService(ModConfig config, IMonitor monitor)
     {
         if (config.CheckInterval <= 0)
             throw new ArgumentOutOfRangeException(nameof(config.CheckInterval), "CheckInterval must be greater than zero.");
@@ -41,6 +48,8 @@ internal sealed class HorseFollowerService
             throw new ArgumentOutOfRangeException(nameof(config.StableRadius), "StableRadius must not be negative.");
 
         this.config = config;
+        this.monitor = monitor;
+        outdoorWarpTracker = new OutdoorWarpTracker(monitor);
     }
 
     internal void OnDayStarted(object? sender, DayStartedEventArgs e)
@@ -48,9 +57,28 @@ internal sealed class HorseFollowerService
         ClearTracking();
     }
 
+    internal void OnUpdateTicking(object? sender, UpdateTickingEventArgs e)
+    {
+        if (!Context.IsWorldReady)
+        {
+            outdoorWarpTracker.ClearPending();
+            return;
+        }
+
+        outdoorWarpTracker.CaptureCandidate(Game1.player, followSessionActive);
+    }
+
     internal void OnPlayerWarped(object? sender, WarpedEventArgs e)
     {
-        StopFollowController();
+        bool routeChanged = outdoorWarpTracker.HandlePlayerWarp(
+            e,
+            trackedHorse,
+            followSessionActive);
+        if (routeChanged)
+        {
+            ClearPathFailure();
+            StopFollowController();
+        }
     }
 
     internal void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
@@ -68,6 +96,8 @@ internal sealed class HorseFollowerService
         if (mountedHorse is not null)
         {
             StopFollowController();
+            outdoorWarpTracker.Clear();
+            ClearPathFailure();
             RestoreHorseSpeed();
             followSessionActive = false;
             trackedHorse = mountedHorse;
@@ -98,35 +128,47 @@ internal sealed class HorseFollowerService
         return horse.currentLocation == Game1.currentLocation && !IsNearHorseStable(horse);
     }
 
-    // Flow: start outside the stop radius, keep one live route while it is useful, then replan on target change or blockage.
+    // Flow: keep a useful route active, but perform expensive route construction incrementally and never repeat an unchanged failure.
     private void UpdateFollow(Horse horse)
     {
-        if (horse.currentLocation != Game1.currentLocation)
+        if (!OutdoorWarpTracker.IsSameLocation(horse.currentLocation, Game1.currentLocation))
         {
-            StopFollowController();
+            UpdateOutdoorTravel(horse);
             return;
         }
+
+        if (outdoorWarpTracker.HasTransitions)
+            outdoorWarpTracker.ClearTransitions();
 
         float distanceSquared = GetDistanceSquared(horse, Game1.player);
         float stopDistance = config.FollowDistance * 64f;
         float startDistance = stopDistance + StartDistancePaddingPixels;
-
         if (distanceSquared <= stopDistance * stopDistance)
         {
             StopFollowController();
             return;
         }
 
+        Point targetTile = GetFollowTargetTile();
+        bool controllerAttached = followController is not null && ReferenceEquals(horse.controller, followController);
+        if (horse.controller is not null && !controllerAttached)
+        {
+            CancelPathSearch();
+            return;
+        }
+
         if (followController is null && distanceSquared <= startDistance * startDistance)
+        {
+            CancelPathSearch();
+            return;
+        }
+
+        if (AdvancePathSearch(horse, Game1.currentLocation, targetTile))
             return;
 
         ApplyFollowSpeed(horse, MathF.Sqrt(distanceSquared), stopDistance);
         ticksSincePlan++;
-        Point targetTile = GetFollowTargetTile();
-        bool controllerAttached = followController is not null && ReferenceEquals(horse.controller, followController);
-        if (horse.controller is not null && !controllerAttached)
-            return;
-
+        controllerAttached = followController is not null && ReferenceEquals(horse.controller, followController);
         bool targetChanged = !hasPlannedTarget || HasTargetMovedEnough(plannedTargetTile, targetTile);
         bool shouldReplan;
         if (controllerAttached)
@@ -152,50 +194,212 @@ internal sealed class HorseFollowerService
         }
 
         if (shouldReplan)
-            TryPlanPath(horse, targetTile, stopDistance);
+            BeginFollowPathSearch(horse, targetTile, stopDistance);
 
         if (followController is not null && ReferenceEquals(horse.controller, followController))
             horse.Sprite.loop = true;
     }
 
-    private void TryPlanPath(Horse horse, Point targetTile, float stopDistance)
+    // Flow: an offscreen horse moves toward each recorded outdoor exit; the expensive path search is divided over game updates.
+    private void UpdateOutdoorTravel(Horse horse)
     {
-        ticksSincePlan = 0;
-        plannedTargetTile = targetTile;
-        hasPlannedTarget = true;
-
-        if (followController is not null && ReferenceEquals(horse.controller, followController))
-            horse.controller = null;
-
-        HorseFollowController nextController = new(
-            horse,
-            Game1.currentLocation,
-            targetTile,
-            Game1.player.getStandingPosition(),
-            stopDistance,
-            UpdateFollowAnimation);
-        if (!nextController.HasPath)
+        OutdoorTransition? transition = outdoorWarpTracker.CurrentTransition;
+        if (transition is null)
         {
-            followController = null;
-            horse.stopWithoutChangingFrame();
-            SetHorseIdle(horse);
+            StopFollowController();
             return;
         }
 
-        followController = nextController;
+        if (transition.TransferRequested)
+        {
+            if (!OutdoorWarpTracker.IsSameLocation(horse.currentLocation, transition.TargetLocation))
+                return;
+
+            monitor.Log(
+                $"Horse arrived in {transition.TargetLocation.NameOrUniqueName}; completed outdoor transition.",
+                LogLevel.Trace);
+            outdoorWarpTracker.CompleteCurrentTransition();
+            ClearPathFailure();
+            ticksSincePlan = RetryIntervalTicks;
+            hasPlannedTarget = false;
+            return;
+        }
+
+        if (!OutdoorWarpTracker.IsSameLocation(horse.currentLocation, transition.SourceLocation))
+        {
+            outdoorWarpTracker.ClearTransitions();
+            StopFollowController();
+            return;
+        }
+
+        Vector2 exitPosition = GetTileCenter(transition.SourceExitTile);
+        float exitArrivalDistance = GetOutdoorExitArrivalDistance(horse);
+        float distanceSquared = Vector2.DistanceSquared(horse.getStandingPosition(), exitPosition);
+        if (horse.TilePoint == transition.SourceExitTile
+            || distanceSquared <= exitArrivalDistance * exitArrivalDistance)
+        {
+            monitor.Log(
+                $"Horse reached outdoor exit {transition.SourceLocation.NameOrUniqueName} ({transition.SourceExitTile.X}, {transition.SourceExitTile.Y}); crossing to {transition.TargetLocation.NameOrUniqueName}.",
+                LogLevel.Trace);
+            CompleteOutdoorTransition(horse, transition);
+            return;
+        }
+
+        bool controllerAttached = followController is not null
+            && ReferenceEquals(horse.controller, followController);
+        if (horse.controller is not null && !controllerAttached)
+        {
+            CancelPathSearch();
+            return;
+        }
+
+        if (AdvancePathSearch(horse, transition.SourceLocation, transition.SourceExitTile))
+            return;
+
+        ApplyOutdoorTravelSpeed(horse);
+        ticksSincePlan++;
+        controllerAttached = followController is not null
+            && ReferenceEquals(horse.controller, followController);
+        bool shouldReplan = controllerAttached
+            ? followController!.IsStuck
+            : followController is null
+                ? ticksSincePlan >= RetryIntervalTicks
+                : !followController.HasPath || ticksSincePlan >= RetryIntervalTicks;
+        if (shouldReplan)
+        {
+            BeginOutdoorPathSearch(
+                horse,
+                transition,
+                exitPosition,
+                exitArrivalDistance);
+        }
+    }
+
+    private void BeginFollowPathSearch(Horse horse, Point targetTile, float stopDistance)
+    {
+        plannedTargetTile = targetTile;
+        hasPlannedTarget = true;
+        BeginPathSearch(
+            horse,
+            new PathRequest(
+                Game1.currentLocation,
+                targetTile,
+                Game1.player.getStandingPosition(),
+                stopDistance,
+                $"player target ({targetTile.X}, {targetTile.Y})"));
+    }
+
+    private void BeginOutdoorPathSearch(
+        Horse horse,
+        OutdoorTransition transition,
+        Vector2 exitPosition,
+        float exitArrivalDistance)
+    {
+        BeginPathSearch(
+            horse,
+            new PathRequest(
+                transition.SourceLocation,
+                transition.SourceExitTile,
+                exitPosition,
+                exitArrivalDistance,
+                $"outdoor exit {transition.SourceLocation.NameOrUniqueName} ({transition.SourceExitTile.X}, {transition.SourceExitTile.Y})"));
+    }
+
+    private void BeginPathSearch(Horse horse, PathRequest request)
+    {
+        if (IsKnownUnreachable(horse, request.Location, request.TargetTile))
+            return;
+
+        CancelPathSearch();
+        ticksSincePlan = 0;
+        if (followController is not null && ReferenceEquals(horse.controller, followController))
+            horse.controller = null;
+        followController = null;
+        horse.stopWithoutChangingFrame();
+
+        pathRequest = request;
+        pathSearch = new HorsePathSearch(
+            horse,
+            request.Location,
+            request.TargetPosition,
+            request.StoppingDistancePixels);
+        AdvancePathSearch(horse, request.Location, request.TargetTile);
+    }
+
+    // Guarantee: collision checks are capped per update; a failed static request is cached until the horse or target materially changes.
+    private bool AdvancePathSearch(Horse horse, GameLocation location, Point targetTile)
+    {
+        if (pathSearch is null || pathRequest is null)
+            return false;
+
+        if (!OutdoorWarpTracker.IsSameLocation(pathRequest.Location, location)
+            || HasTargetMovedEnough(pathRequest.TargetTile, targetTile))
+        {
+            CancelPathSearch();
+            return false;
+        }
+
+        pathSearch.Advance(PathSearchNodesPerUpdate);
+        if (!pathSearch.IsComplete)
+            return true;
+
+        HorsePathSearch completedSearch = pathSearch;
+        PathRequest completedRequest = pathRequest;
+        CancelPathSearch();
+        if (completedSearch.Path is null)
+        {
+            RecordPathFailure(horse, completedRequest.Location, completedRequest.TargetTile);
+            monitor.Log(
+                $"Horse could not find {completedRequest.Description} after {completedSearch.SearchedNodeCount} nodes; it will not retry until the horse or target changes.",
+                LogLevel.Trace);
+            horse.stopWithoutChangingFrame();
+            SetHorseIdle(horse);
+            return true;
+        }
+
+        ClearPathFailure();
+        followController = new HorseFollowController(
+            horse,
+            completedRequest.Location,
+            completedRequest.TargetTile,
+            completedRequest.TargetPosition,
+            completedRequest.StoppingDistancePixels,
+            UpdateFollowAnimation,
+            completedSearch.Path);
         horse.Sprite.CurrentAnimation = null;
-        horse.controller = nextController;
+        horse.controller = followController;
+        return true;
     }
 
-    private Point GetFollowTargetTile()
+    private void CompleteOutdoorTransition(Horse horse, OutdoorTransition transition)
     {
-        return Game1.player.TilePoint;
+        StopFollowController();
+        ClearPathFailure();
+        Point destinationTile = FindOpenDestinationTile(horse, transition);
+        transition.TransferRequested = true;
+        monitor.Log(
+            $"Warping horse from {transition.SourceLocation.NameOrUniqueName} to {transition.TargetLocation.NameOrUniqueName} ({destinationTile.X}, {destinationTile.Y}).",
+            LogLevel.Trace);
+        Game1.warpCharacter(horse, transition.TargetLocation, destinationTile.ToVector2());
+        if (OutdoorWarpTracker.IsSameLocation(horse.currentLocation, transition.TargetLocation))
+        {
+            outdoorWarpTracker.CompleteCurrentTransition();
+            ticksSincePlan = RetryIntervalTicks;
+            hasPlannedTarget = false;
+        }
     }
 
-    private static bool HasTargetMovedEnough(Point previousTarget, Point currentTarget)
+    private static Point FindOpenDestinationTile(Horse horse, OutdoorTransition transition)
     {
-        return Math.Abs(previousTarget.X - currentTarget.X)
-            + Math.Abs(previousTarget.Y - currentTarget.Y) >= 2;
+        Vector2 openTile = Utility.recursiveFindOpenTileForCharacter(
+            horse,
+            transition.TargetLocation,
+            transition.DestinationTile.ToVector2(),
+            maxIterations: 24,
+            allowOffMap: false);
+        return openTile == Vector2.Zero
+            ? transition.DestinationTile
+            : openTile.ToPoint();
     }
 
     private void BeginFollowSession(Horse horse)
@@ -204,6 +408,8 @@ internal sealed class HorseFollowerService
         originalHorseSpeed = horse.speed;
         originalHorseAddedSpeed = horse.addedSpeed;
         hasOriginalHorseSpeed = true;
+        ClearPathFailure();
+        CancelPathSearch();
         followSessionActive = true;
         ticksSincePlan = RetryIntervalTicks;
         hasPlannedTarget = false;
@@ -211,11 +417,21 @@ internal sealed class HorseFollowerService
 
     private void ApplyFollowSpeed(Horse horse, float distancePixels, float stopDistancePixels)
     {
+        float excessDistanceTiles = Math.Max(0f, distancePixels - stopDistancePixels) / 64f;
+        float catchUpSpeed = MathHelper.Clamp(excessDistanceTiles * 0.5f, 0.5f, 2f);
+        SetFollowSpeed(horse, catchUpSpeed);
+    }
+
+    private void ApplyOutdoorTravelSpeed(Horse horse)
+    {
+        SetFollowSpeed(horse, catchUpSpeed: 2f);
+    }
+
+    private void SetFollowSpeed(Horse horse, float catchUpSpeed)
+    {
         if (!hasOriginalHorseSpeed || !ReferenceEquals(speedAdjustedHorse, horse))
             return;
 
-        float excessDistanceTiles = Math.Max(0f, distancePixels - stopDistancePixels) / 64f;
-        float catchUpSpeed = MathHelper.Clamp(excessDistanceTiles * 0.5f, 0.5f, 2f);
         float followSpeed = Math.Max(2f, Game1.player.speed + Game1.player.addedSpeed + catchUpSpeed);
         horse.speed = (int)MathF.Floor(followSpeed);
         horse.addedSpeed = followSpeed - horse.speed;
@@ -267,6 +483,54 @@ internal sealed class HorseFollowerService
         return offset.LengthSquared();
     }
 
+    private static Vector2 GetTileCenter(Point tile)
+    {
+        return new Vector2((tile.X + 0.5f) * 64f, (tile.Y + 0.5f) * 64f);
+    }
+
+    private static Point GetFollowTargetTile()
+    {
+        return Game1.player.TilePoint;
+    }
+
+    private static bool HasTargetMovedEnough(Point previousTarget, Point currentTarget)
+    {
+        return Math.Abs(previousTarget.X - currentTarget.X)
+            + Math.Abs(previousTarget.Y - currentTarget.Y) >= 2;
+    }
+
+    private static float GetOutdoorExitArrivalDistance(Horse horse)
+    {
+        return Math.Max(
+            MinimumOutdoorExitArrivalDistancePixels,
+            horse.GetBoundingBox().Width + 32f);
+    }
+
+    private bool IsKnownUnreachable(Horse horse, GameLocation location, Point targetTile)
+    {
+        return failedPath is { } failure
+            && OutdoorWarpTracker.IsSameLocation(failure.Location, location)
+            && !HasTargetMovedEnough(failure.TargetTile, targetTile)
+            && Math.Abs(failure.HorseTile.X - horse.TilePoint.X) < 2
+            && Math.Abs(failure.HorseTile.Y - horse.TilePoint.Y) < 2;
+    }
+
+    private void RecordPathFailure(Horse horse, GameLocation location, Point targetTile)
+    {
+        failedPath = new PathFailure(location, horse.TilePoint, targetTile);
+    }
+
+    private void ClearPathFailure()
+    {
+        failedPath = null;
+    }
+
+    private void CancelPathSearch()
+    {
+        pathSearch = null;
+        pathRequest = null;
+    }
+
     private bool IsNearHorseStable(Horse horse)
     {
         Stable? stable = horse.TryFindStable();
@@ -287,6 +551,7 @@ internal sealed class HorseFollowerService
 
     private void StopFollowController()
     {
+        CancelPathSearch();
         if (trackedHorse is not null)
         {
             if (followController is not null && ReferenceEquals(trackedHorse.controller, followController))
@@ -318,9 +583,23 @@ internal sealed class HorseFollowerService
     private void ClearTracking()
     {
         StopFollowController();
+        outdoorWarpTracker.Clear();
+        ClearPathFailure();
         RestoreHorseSpeed();
         trackedHorse = null;
         followSessionActive = false;
         wasMounted = false;
     }
+
+    private sealed record PathRequest(
+        GameLocation Location,
+        Point TargetTile,
+        Vector2 TargetPosition,
+        float StoppingDistancePixels,
+        string Description);
+
+    private sealed record PathFailure(
+        GameLocation Location,
+        Point HorseTile,
+        Point TargetTile);
 }

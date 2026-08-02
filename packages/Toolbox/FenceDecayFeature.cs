@@ -5,6 +5,13 @@ namespace Toolbox;
 
 internal static class FenceDecayFeature
 {
+    private static Func<ModConfig> GetConfig = null!;
+
+    internal static void Initialize(Func<ModConfig> getConfig)
+    {
+        GetConfig = getConfig;
+    }
+
     internal static void ApplyPatches(Harmony harmony)
     {
         harmony.Patch(
@@ -14,7 +21,7 @@ internal static class FenceDecayFeature
 
     private static void MinutesElapsedPostfix(Fence __instance, ref bool __result)
     {
-        if (!Game1.IsMasterGame)
+        if (!GetConfig().EnableFenceDecay || !Game1.IsMasterGame)
             return;
 
         // Rule: 只有主机写入同步栅栏生命值；大门沿用原版的双倍耐久。

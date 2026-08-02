@@ -8,20 +8,9 @@ namespace HorseFollower;
 
 internal sealed class HorseFollowController : PathFindController
 {
-    private const int SearchLimit = 10000;
     private const int StuckTimeoutMilliseconds = 750;
-
-    private static readonly Point[] NeighborOffsets =
-    {
-        new(1, 0),
-        new(-1, 0),
-        new(0, 1),
-        new(0, -1),
-        new(1, 1),
-        new(1, -1),
-        new(-1, 1),
-        new(-1, -1)
-    };
+    private const int MaxRouteSegmentsPerUpdate = 8;
+    private const int MaxReachedWaypointsPerUpdate = 8;
 
     private readonly Horse horse;
     private readonly Vector2 targetPosition;
@@ -35,8 +24,9 @@ internal sealed class HorseFollowController : PathFindController
         Point targetTile,
         Vector2 targetPosition,
         float stoppingDistancePixels,
-        Action<Horse, GameTime, int, float> animate)
-        : base(CreatePath(horse, location, targetTile, targetPosition, stoppingDistancePixels), location, horse, targetTile)
+        Action<Horse, GameTime, int, float> animate,
+        Stack<Point> path)
+        : base(path, location, horse, targetTile)
     {
         this.horse = horse;
         this.targetPosition = targetPosition;
@@ -85,15 +75,23 @@ internal sealed class HorseFollowController : PathFindController
         int lastDirection = horse.FacingDirection;
         float distanceMoved = 0f;
 
-        while (remainingMovement > 0f && HasPath && !IsWithinStoppingDistance())
+        int routeSegments = 0;
+        int reachedWaypoints = 0;
+        while (remainingMovement > 0f
+            && routeSegments < MaxRouteSegmentsPerUpdate
+            && HasPath
+            && !IsWithinStoppingDistance())
         {
-            while (HasPath && HasReached(pathToEndPoint.Peek()))
+            while (HasPath
+                && reachedWaypoints < MaxReachedWaypointsPerUpdate
+                && HasReached(pathToEndPoint.Peek()))
             {
                 pathToEndPoint.Pop();
                 timerSinceLastCheckPoint = 0;
+                reachedWaypoints++;
             }
 
-            if (!HasPath)
+            if (!HasPath || reachedWaypoints >= MaxReachedWaypointsPerUpdate)
                 break;
 
             Point waypoint = pathToEndPoint.Peek();
@@ -112,6 +110,7 @@ internal sealed class HorseFollowController : PathFindController
             remainingMovement -= movementSpent;
             distanceMoved += actualMotion.Length();
             lastDirection = GetDirection(actualMotion);
+            routeSegments++;
         }
 
         return (lastDirection, distanceMoved);
@@ -228,155 +227,5 @@ internal sealed class HorseFollowController : PathFindController
     private static Vector2 GetTileCenter(Point tile)
     {
         return new Vector2((tile.X + 0.5f) * 64f, (tile.Y + 0.5f) * 64f);
-    }
-
-    private static Stack<Point>? CreatePath(
-        Horse horse,
-        GameLocation location,
-        Point targetTile,
-        Vector2 targetPosition,
-        float stoppingDistancePixels)
-    {
-        Point start = horse.TilePoint;
-        float stoppingDistanceSquared = stoppingDistancePixels * stoppingDistancePixels;
-        Rectangle horseBounds = horse.GetBoundingBox();
-        PathFindController? activeController = horse.controller;
-        horse.controller = null;
-        try
-        {
-            PriorityQueue<Point, (int EstimatedSteps, float RemainingDistance)> open = new();
-            Dictionary<Point, int> costs = new() { [start] = 0 };
-            Dictionary<Point, Point> previous = new();
-            HashSet<Point> closed = new();
-            int startHeuristic = GetHeuristic(start, targetPosition, stoppingDistancePixels);
-            open.Enqueue(
-                start,
-                (startHeuristic, Vector2.Distance(GetTileCenter(start), targetPosition)));
-
-            int searched = 0;
-            while (open.TryDequeue(out Point current, out _))
-            {
-                if (!closed.Add(current))
-                    continue;
-                if (current != start
-                    && IsWithinTargetRadius(current, targetPosition, stoppingDistanceSquared))
-                {
-                    return ReconstructPath(current, start, previous);
-                }
-                if (++searched >= SearchLimit)
-                    return null;
-
-                foreach (Point offset in NeighborOffsets)
-                {
-                    Point next = new(current.X + offset.X, current.Y + offset.Y);
-                    if (closed.Contains(next) || !location.isTileOnMap(next))
-                        continue;
-                    if (!CanTraverse(current, next, horseBounds, horse, location))
-                        continue;
-
-                    int nextCost = costs[current] + 1;
-                    if (costs.TryGetValue(next, out int existingCost) && existingCost <= nextCost)
-                        continue;
-
-                    costs[next] = nextCost;
-                    previous[next] = current;
-                    int heuristic = GetHeuristic(next, targetPosition, stoppingDistancePixels);
-                    float remainingDistance = Vector2.Distance(GetTileCenter(next), targetPosition);
-                    open.Enqueue(next, (nextCost + heuristic, remainingDistance));
-                }
-            }
-
-            return null;
-        }
-        finally
-        {
-            horse.controller = activeController;
-        }
-    }
-
-    private static bool CanTraverse(
-        Point current,
-        Point next,
-        Rectangle horseBounds,
-        Horse horse,
-        GameLocation location)
-    {
-        if (!CanHorseStandAt(next, horseBounds, horse, location))
-            return false;
-
-        int horizontalOffset = next.X - current.X;
-        int verticalOffset = next.Y - current.Y;
-        if (horizontalOffset == 0 || verticalOffset == 0)
-            return true;
-
-        Point horizontalNeighbor = new(current.X + horizontalOffset, current.Y);
-        Point verticalNeighbor = new(current.X, current.Y + verticalOffset);
-        return location.isTileOnMap(horizontalNeighbor)
-            && location.isTileOnMap(verticalNeighbor)
-            && CanHorseStandAt(horizontalNeighbor, horseBounds, horse, location)
-            && CanHorseStandAt(verticalNeighbor, horseBounds, horse, location);
-    }
-
-    private static bool CanHorseStandAt(
-        Point tile,
-        Rectangle horseBounds,
-        Horse horse,
-        GameLocation location)
-    {
-        Vector2 center = GetTileCenter(tile);
-        Rectangle bounds = new(
-            (int)center.X - horseBounds.Width / 2,
-            (int)center.Y - horseBounds.Height / 2,
-            horseBounds.Width,
-            horseBounds.Height);
-        return !location.isCollidingPosition(
-            bounds,
-            Game1.viewport,
-            isFarmer: false,
-            damagesFarmer: 0,
-            glider: false,
-            character: horse,
-            pathfinding: true,
-            projectile: false,
-            ignoreCharacterRequirement: false,
-            skipCollisionEffects: true);
-    }
-
-    private static bool IsWithinTargetRadius(
-        Point tile,
-        Vector2 targetPosition,
-        float stoppingDistanceSquared)
-    {
-        Vector2 offset = GetTileCenter(tile) - targetPosition;
-        return offset.LengthSquared() <= stoppingDistanceSquared;
-    }
-
-    private static int GetHeuristic(
-        Point tile,
-        Vector2 targetPosition,
-        float stoppingDistancePixels)
-    {
-        Vector2 offset = GetTileCenter(tile) - targetPosition;
-        float remainingDistance = Math.Max(
-            0f,
-            Math.Max(Math.Abs(offset.X), Math.Abs(offset.Y)) - stoppingDistancePixels);
-        return (int)MathF.Ceiling(remainingDistance / 64f);
-    }
-
-    private static Stack<Point> ReconstructPath(
-        Point end,
-        Point start,
-        Dictionary<Point, Point> previous)
-    {
-        Stack<Point> path = new();
-        Point current = end;
-        while (current != start)
-        {
-            path.Push(current);
-            if (!previous.TryGetValue(current, out current))
-                throw new InvalidOperationException("Path reconstruction did not reach its start node.");
-        }
-
-        return path;
     }
 }

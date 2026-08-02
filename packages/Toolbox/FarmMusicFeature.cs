@@ -6,7 +6,12 @@ namespace Toolbox;
 
 internal static class FarmMusicFeature
 {
-    private const string MusicPlayerTrack = "sam_acoustic1";
+    private static Func<ModConfig> GetConfig = null!;
+
+    internal static void Initialize(Func<ModConfig> getConfig)
+    {
+        GetConfig = getConfig;
+    }
 
     internal static void ApplyPatches(Harmony harmony)
     {
@@ -17,14 +22,11 @@ internal static class FarmMusicFeature
 
     private static bool HandleMusicChangePrefix(GameLocation? oldLocation, GameLocation? newLocation)
     {
-        return !ShouldKeepFarmMusic(oldLocation, newLocation);
+        return !GetConfig().EnableFarmMusic || !ShouldKeepFarmMusic(oldLocation, newLocation);
     }
 
     private static bool ShouldKeepFarmMusic(GameLocation? oldLocation, GameLocation? newLocation)
     {
-        if (Game1.getMusicTrackName() != MusicPlayerTrack)
-            return false;
-
         if (oldLocation is FarmHouse || newLocation is FarmHouse)
             return false;
 

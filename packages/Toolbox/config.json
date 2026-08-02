@@ -1,8 +1,13 @@
 {
+  "EnableAutoPet": true,
   "CheckInterval": 60,
   "ScanRange": 3,
+  "EnableFurnitureLightRadius": true,
   "FurnitureLightRadius": 1.5,
+  "EnableObjectLightRadius": true,
   "ObjectLightRadius": 1.5,
+  "EnableFarmMusic": true,
+  "EnableFenceDecay": true,
   "EnableAutomaticGates": true,
   "AutomaticGateCloseDelay": 0,
   "EnableInputMethodControl": true

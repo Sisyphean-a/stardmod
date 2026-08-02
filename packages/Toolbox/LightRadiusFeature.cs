@@ -50,19 +50,9 @@ internal static class LightRadiusFeature
             return;
         }
 
-        LightSource source = item.lightSource;
-        float baseRadius = GetBaseRadius(item, source.radius.Value);
-        float radius = baseRadius * Config.FurnitureLightRadius;
-        item.lightSource = new LightSource(
-            source.Id,
-            source.textureIndex.Value,
-            source.position.Value,
-            radius,
-            source.color.Value,
-            source.lightContext.Value,
-            source.PlayerID,
-            null);
-        GameExtensions.AddLight(location.sharedLights, item.lightSource.Clone());
+        UpdateLightSource(
+            item,
+            Config.EnableFurnitureLightRadius ? Config.FurnitureLightRadius : 1f);
     }
 
     private static void InitializeLightSourcePostfix(ref StardewValley.Object __instance)
@@ -70,18 +60,53 @@ internal static class LightRadiusFeature
         if (__instance.lightSource is null)
             return;
 
-        LightSource source = __instance.lightSource;
-        float baseRadius = GetBaseRadius(__instance, source.radius.Value);
-        float radius = baseRadius * Config.ObjectLightRadius;
-        __instance.lightSource = new LightSource(
+        UpdateLightSource(
+            __instance,
+            Config.EnableObjectLightRadius ? Config.ObjectLightRadius : 1f);
+    }
+
+    internal static void RefreshCurrentLocation()
+    {
+        if (!Context.IsWorldReady)
+            return;
+
+        GameLocation location = Game1.currentLocation;
+        foreach (StardewValley.Object item in location.objects.Values)
+            RefreshLightSource(item);
+        foreach (Furniture furniture in location.furniture)
+            RefreshLightSource(furniture);
+    }
+
+    private static void RefreshLightSource(StardewValley.Object item)
+    {
+        if (item.lightSource is null)
+            return;
+
+        float multiplier = item is Furniture furniture
+            && (furniture.furniture_type.Value == 7
+                || furniture.furniture_type.Value == 17
+                || item.QualifiedItemId == "(F)1369")
+            ? (Config.EnableFurnitureLightRadius ? Config.FurnitureLightRadius : 1f)
+            : (Config.EnableObjectLightRadius ? Config.ObjectLightRadius : 1f);
+        UpdateLightSource(item, multiplier);
+    }
+
+    private static void UpdateLightSource(StardewValley.Object item, float multiplier)
+    {
+        LightSource source = item.lightSource!;
+        float baseRadius = GetBaseRadius(item, source.radius.Value);
+        item.lightSource = new LightSource(
             source.Id,
             source.textureIndex.Value,
             source.position.Value,
-            radius,
+            baseRadius * multiplier,
             source.color.Value,
             source.lightContext.Value,
             source.PlayerID,
             null);
+
+        if (Game1.IsMasterGame && item.Location is not null)
+            GameExtensions.AddLight(item.Location.sharedLights, item.lightSource.Clone());
     }
 
     private static float GetBaseRadius(StardewValley.Object item, float currentRadius)

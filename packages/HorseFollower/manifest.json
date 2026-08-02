@@ -1,8 +1,8 @@
 {
   "Name": "马匹跟随",
   "Author": "xixifu",
-  "Version": "1.3.0",
-  "Description": "下马后让马在当前场景跟随玩家。",
+  "Version": "1.5.0",
+  "Description": "下马后让马跟随玩家，并沿原版室外步行出口跨图。",
   "UniqueID": "xixifu.HorseFollower",
   "EntryDll": "HorseFollower.dll",
   "MinimumApiVersion": "4.0.0",

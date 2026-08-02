@@ -10,9 +10,10 @@ public sealed class ModEntry : Mod
     public override void Entry(IModHelper helper)
     {
         ModConfig config = helper.ReadConfig<ModConfig>();
-        Service = new HorseFollowerService(config);
+        Service = new HorseFollowerService(config, Monitor);
 
         helper.Events.GameLoop.DayStarted += Service.OnDayStarted;
+        helper.Events.GameLoop.UpdateTicking += Service.OnUpdateTicking;
         helper.Events.GameLoop.UpdateTicked += Service.OnUpdateTicked;
         helper.Events.Player.Warped += Service.OnPlayerWarped;
     }

@@ -6,7 +6,7 @@
 
 ## 背景
 
-马匹跟随虽然功能规模不大，但用户明确要求它作为独立 mod，不并入工具箱。它拥有独立的骑乘状态、场景暂停和新日清理生命周期。
+马匹跟随虽然功能规模不大，但用户明确要求它作为独立 mod，不并入工具箱。它拥有独立的骑乘状态、室外跨图路线和新日清理生命周期。
 
 ## 决定
 
@@ -28,5 +28,6 @@
 - `packages/HorseFollower/manifest.json`
 - `packages/HorseFollower/ModEntry.cs`
 - `packages/HorseFollower/HorseFollowerService.cs`
+- `packages/HorseFollower/OutdoorWarpTracker.cs`
 - `packages/HorseFollower/ModConfig.cs`
 - `StardewMods.sln`

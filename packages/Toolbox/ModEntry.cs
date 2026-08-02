@@ -11,6 +11,7 @@ public sealed class ModEntry : Mod
 {
     private AutomaticGatesFeature automaticGatesFeature = null!;
     private InputMethodFeature inputMethodFeature = null!;
+    private ToolboxOptionsTab toolboxOptionsTab = null!;
     private ModConfig Config = null!;
     private Vector2 lastPlayerPosition;
     private bool isInFarmArea;
@@ -19,11 +20,14 @@ public sealed class ModEntry : Mod
     {
         Config = helper.ReadConfig<ModConfig>();
         automaticGatesFeature = new AutomaticGatesFeature(() => Config);
-        inputMethodFeature = new InputMethodFeature(() => Config.EnableInputMethodControl);
+        inputMethodFeature = new InputMethodFeature(() => Config.EnableInputMethodControl, Monitor);
+        toolboxOptionsTab = new ToolboxOptionsTab(helper, () => Config, PersistConfig);
         Harmony harmony = new(ModManifest.UniqueID);
         LightRadiusFeature.Initialize(Config, ModManifest);
         LightRadiusFeature.ApplyPatches(harmony);
+        FarmMusicFeature.Initialize(() => Config);
         FarmMusicFeature.ApplyPatches(harmony);
+        FenceDecayFeature.Initialize(() => Config);
         FenceDecayFeature.ApplyPatches(harmony);
 
         helper.Events.GameLoop.GameLaunched += OnGameLaunched;
@@ -33,6 +37,9 @@ public sealed class ModEntry : Mod
         helper.Events.GameLoop.UpdateTicked += inputMethodFeature.OnUpdateTicked;
         helper.Events.GameLoop.ReturnedToTitle += automaticGatesFeature.OnReturnedToTitle;
         helper.Events.GameLoop.ReturnedToTitle += inputMethodFeature.OnReturnedToTitle;
+        helper.Events.Display.MenuChanged += toolboxOptionsTab.OnMenuChanged;
+        helper.Events.Input.ButtonPressed += toolboxOptionsTab.OnButtonPressed;
+        helper.Events.Display.RenderedActiveMenu += toolboxOptionsTab.OnRenderedActiveMenu;
     }
 
     private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
@@ -47,8 +54,20 @@ public sealed class ModEntry : Mod
             {
                 Config = new ModConfig();
                 LightRadiusFeature.SetConfig(Config);
+                LightRadiusFeature.RefreshCurrentLocation();
             },
             save: () => Helper.WriteConfig(Config));
+        api.AddBoolOption(
+            ModManifest,
+            () => Config.EnableAutoPet,
+            value =>
+            {
+                Config.EnableAutoPet = value;
+                if (value)
+                    CheckAndPetAnimals();
+            },
+            () => "自动抚摸",
+            () => "在农场和畜棚自动抚摸范围内的动物。");
         api.AddNumberOption(
             ModManifest,
             () => Config.CheckInterval,
@@ -65,18 +84,58 @@ public sealed class ModEntry : Mod
             () => "检查玩家周围多少格范围内的动物",
             1,
             5);
+        api.AddBoolOption(
+            ModManifest,
+            () => Config.EnableFurnitureLightRadius,
+            value =>
+            {
+                Config.EnableFurnitureLightRadius = value;
+                LightRadiusFeature.RefreshCurrentLocation();
+            },
+            () => "家具光线倍率",
+            () => "调整家具光源半径。关闭后立即恢复原始半径。");
         api.AddNumberOption(
             ModManifest,
             () => Config.FurnitureLightRadius,
-            value => Config.FurnitureLightRadius = value,
-            () => "家具光线倍率",
+            value =>
+            {
+                Config.FurnitureLightRadius = value;
+                LightRadiusFeature.RefreshCurrentLocation();
+            },
+            () => "家具光线倍率数值",
             () => "家具（室内）光源的半径倍率。");
+        api.AddBoolOption(
+            ModManifest,
+            () => Config.EnableObjectLightRadius,
+            value =>
+            {
+                Config.EnableObjectLightRadius = value;
+                LightRadiusFeature.RefreshCurrentLocation();
+            },
+            () => "物体光线倍率",
+            () => "调整普通物体光源半径。关闭后立即恢复原始半径。");
         api.AddNumberOption(
             ModManifest,
             () => Config.ObjectLightRadius,
-            value => Config.ObjectLightRadius = value,
-            () => "物体光线倍率",
+            value =>
+            {
+                Config.ObjectLightRadius = value;
+                LightRadiusFeature.RefreshCurrentLocation();
+            },
+            () => "物体光线倍率数值",
             () => "所有非家具光源的半径倍率。");
+        api.AddBoolOption(
+            ModManifest,
+            () => Config.EnableFarmMusic,
+            value => Config.EnableFarmMusic = value,
+            () => "农场音乐保持",
+            () => "在农场与农场建筑之间换场时保持音乐播放器音乐。");
+        api.AddBoolOption(
+            ModManifest,
+            () => Config.EnableFenceDecay,
+            value => Config.EnableFenceDecay = value,
+            () => "栅栏防腐朽",
+            () => "阻止栅栏和大门因时间流逝而损耗耐久。");
         api.AddBoolOption(
             ModManifest,
             () => Config.EnableAutomaticGates,
@@ -109,7 +168,10 @@ public sealed class ModEntry : Mod
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
-        if (!isInFarmArea || !Context.IsWorldReady || !e.IsMultipleOf((uint)Config.CheckInterval))
+        if (!Config.EnableAutoPet
+            || !isInFarmArea
+            || !Context.IsWorldReady
+            || !e.IsMultipleOf((uint)Config.CheckInterval))
             return;
 
         Vector2 position = Game1.player.Position;
@@ -122,7 +184,9 @@ public sealed class ModEntry : Mod
 
     private void CheckAndPetAnimals()
     {
-        if (Game1.currentLocation is not Farm && Game1.currentLocation is not AnimalHouse)
+        if (!Config.EnableAutoPet
+            || !Context.IsWorldReady
+            || (Game1.currentLocation is not Farm && Game1.currentLocation is not AnimalHouse))
             return;
 
         Vector2 playerTile = new(
@@ -145,6 +209,16 @@ public sealed class ModEntry : Mod
 
             animal.pet(Game1.player, false);
         }
+    }
+
+    private void PersistConfig(bool refreshLights, bool petAnimals)
+    {
+        Helper.WriteConfig(Config);
+
+        if (refreshLights)
+            LightRadiusFeature.RefreshCurrentLocation();
+        if (petAnimals && Config.EnableAutoPet)
+            CheckAndPetAnimals();
     }
 
     private void OnButtonPressed(object? sender, ButtonPressedEventArgs e)

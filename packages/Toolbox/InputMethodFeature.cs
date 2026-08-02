@@ -13,13 +13,16 @@ internal sealed class InputMethodFeature
     private const uint CancelComposition = 0x0004;
 
     private readonly Func<bool> isEnabled;
+    private readonly IMonitor monitor;
     private IntPtr gameWindow;
     private IntPtr savedInputContext;
     private bool isInputMethodBlocked;
+    private bool hasLoggedInputMethodReassociation;
 
-    public InputMethodFeature(Func<bool> isEnabled)
+    public InputMethodFeature(Func<bool> isEnabled, IMonitor monitor)
     {
         this.isEnabled = isEnabled;
+        this.monitor = monitor;
     }
 
     public void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
@@ -49,18 +52,29 @@ internal sealed class InputMethodFeature
         if (window == IntPtr.Zero)
             return;
 
+        if (isInputMethodBlocked && gameWindow != window)
+            RestoreInputMethod();
+
         if (isInputMethodBlocked)
         {
-            if (gameWindow == window)
+            if (!CancelTextComposition(window))
                 return;
 
-            RestoreInputMethod();
+            ImmAssociateContext(window, IntPtr.Zero);
+            if (!hasLoggedInputMethodReassociation)
+            {
+                monitor.Log("检测到输入法上下文被重新关联，已再次屏蔽。", LogLevel.Debug);
+                hasLoggedInputMethodReassociation = true;
+            }
+
+            return;
         }
 
         CancelTextComposition(window);
         savedInputContext = ImmAssociateContext(window, IntPtr.Zero);
         gameWindow = window;
         isInputMethodBlocked = true;
+        hasLoggedInputMethodReassociation = false;
     }
 
     private void RestoreInputMethod()
@@ -72,18 +86,20 @@ internal sealed class InputMethodFeature
         gameWindow = IntPtr.Zero;
         savedInputContext = IntPtr.Zero;
         isInputMethodBlocked = false;
+        hasLoggedInputMethodReassociation = false;
     }
 
-    private static void CancelTextComposition(IntPtr window)
+    private static bool CancelTextComposition(IntPtr window)
     {
         IntPtr inputContext = ImmGetContext(window);
         if (inputContext == IntPtr.Zero)
-            return;
+            return false;
 
         try
         {
             ImmNotifyIME(inputContext, NotifyCompositionString, CancelComposition, 0);
             ImmNotifyIME(inputContext, NotifyCloseCandidate, 0, 0);
+            return true;
         }
         finally
         {
