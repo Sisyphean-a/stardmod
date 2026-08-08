@@ -25,4 +25,6 @@ public sealed class ModConfig
     public int AutomaticGateCloseDelay { get; set; }
 
     public bool EnableInputMethodControl { get; set; } = true;
+
+    public bool EnableHarvestWithScythe { get; set; } = true;
 }

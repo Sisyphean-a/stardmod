@@ -10,5 +10,6 @@
   "EnableFenceDecay": true,
   "EnableAutomaticGates": true,
   "AutomaticGateCloseDelay": 0,
-  "EnableInputMethodControl": true
+  "EnableInputMethodControl": true,
+  "EnableHarvestWithScythe": true
 }

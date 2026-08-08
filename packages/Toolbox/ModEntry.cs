@@ -29,6 +29,8 @@ public sealed class ModEntry : Mod
         FarmMusicFeature.ApplyPatches(harmony);
         FenceDecayFeature.Initialize(() => Config);
         FenceDecayFeature.ApplyPatches(harmony);
+        HarvestWithScytheFeature.Initialize(() => Config);
+        HarvestWithScytheFeature.ApplyPatches(harmony);
 
         helper.Events.GameLoop.GameLaunched += OnGameLaunched;
         helper.Events.Player.Warped += OnPlayerWarped;
@@ -155,6 +157,12 @@ public sealed class ModEntry : Mod
             value => Config.EnableInputMethodControl = value,
             () => "自动输入法控制",
             () => "游戏操作时关闭系统输入法；游戏出现文字输入框时自动启用。关闭后立即恢复。");
+        api.AddBoolOption(
+            ModManifest,
+            () => Config.EnableHarvestWithScythe,
+            value => Config.EnableHarvestWithScythe = value,
+            () => "镰刀收割",
+            () => "允许用镰刀收割作物、花朵和地面觅食物；不支持用剑代替镰刀。");
     }
 
     private void OnPlayerWarped(object? sender, WarpedEventArgs e)

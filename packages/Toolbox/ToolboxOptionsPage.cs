@@ -102,6 +102,9 @@ internal sealed class ToolboxOptionsPage : IClickableMenu
             case 6:
                 config.EnableInputMethodControl = !config.EnableInputMethodControl;
                 break;
+            case 7:
+                config.EnableHarvestWithScythe = !config.EnableHarvestWithScythe;
+                break;
             default:
                 return;
         }
@@ -160,6 +163,7 @@ internal sealed class ToolboxOptionsPage : IClickableMenu
             4 => ("栅栏防腐朽", getConfig().EnableFenceDecay),
             5 => ("自动开关门", getConfig().EnableAutomaticGates),
             6 => ("自动输入法控制", getConfig().EnableInputMethodControl),
+            7 => ("镰刀收割", getConfig().EnableHarvestWithScythe),
             _ => throw new ArgumentOutOfRangeException(nameof(index))
         };
 
@@ -212,7 +216,7 @@ internal sealed class ToolboxOptionsPage : IClickableMenu
         batch.DrawString(Game1.smallFont, text, position, color);
     }
 
-    private int GetRowCount() => section == SettingsSection.Features ? 7 : 5;
+    private int GetRowCount() => section == SettingsSection.Features ? 8 : 5;
 
     private Rectangle GetRowBounds(int index)
     {

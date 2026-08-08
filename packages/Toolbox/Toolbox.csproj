@@ -29,6 +29,10 @@
       <HintPath>$(GamePath)\MonoGame.Framework.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="xTile">
+      <HintPath>$(GamePath)\xTile.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="0Harmony">
       <HintPath>$(GamePath)\smapi-internal\0Harmony.dll</HintPath>
       <Private>false</Private>
