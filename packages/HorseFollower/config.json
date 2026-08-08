@@ -1,5 +1,6 @@
 {
   "CheckInterval": 10,
-  "FollowDistance": 3,
+  "FollowDistance": 4,
+  "FollowStartDistance": 6,
   "StableRadius": 3
 }
