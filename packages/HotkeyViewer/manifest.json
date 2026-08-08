@@ -1,0 +1,10 @@
+{
+  "Name": "快捷键查看器",
+  "Author": "xixifu",
+  "Version": "1.0.0",
+  "Description": "查看游戏本体与已加载模组的快捷键，并标出潜在冲突。",
+  "UniqueID": "xixifu.HotkeyViewer",
+  "EntryDll": "HotkeyViewer.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}

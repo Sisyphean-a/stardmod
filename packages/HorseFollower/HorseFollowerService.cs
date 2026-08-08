@@ -13,6 +13,8 @@ internal sealed class HorseFollowerService
     private const float MinimumOutdoorExitArrivalDistancePixels = 80f;
     private const int PathSearchNodesPerUpdate = 16;
     private const int HorseWalkAnimationFrameDurationMilliseconds = 70;
+    private const float CatchUpNormalSpeedDistanceTiles = 7f;
+    private const float CatchUpFastSpeedDistanceTiles = 10f;
 
     private readonly ModConfig config;
     private readonly IMonitor monitor;
@@ -155,6 +157,7 @@ internal sealed class HorseFollowerService
         if (distanceSquared <= stopDistance * stopDistance)
         {
             LogFollow($"service-stop reason=stopping-distance distance={distance:0.0}");
+            RestoreOriginalHorseSpeed();
             StopFollowController();
             return;
         }
@@ -168,6 +171,8 @@ internal sealed class HorseFollowerService
             return;
         }
 
+        ApplyFollowSpeed(horse, distance);
+
         if (followController is null && distanceSquared <= startDistance * startDistance)
         {
             LogFollow($"service-pause reason=start-hysteresis distance={distance:0.0}");
@@ -177,8 +182,6 @@ internal sealed class HorseFollowerService
 
         if (AdvancePathSearch(horse, Game1.currentLocation, targetTile))
             return;
-
-        ApplyFollowSpeed(horse, MathF.Sqrt(distanceSquared), stopDistance);
         ticksSincePlan++;
         controllerAttached = followController is not null && ReferenceEquals(horse.controller, followController);
         bool targetChanged = !hasPlannedTarget || HasTargetMovedEnough(plannedTargetTile, targetTile);
@@ -453,10 +456,14 @@ internal sealed class HorseFollowerService
         hasPlannedTarget = false;
     }
 
-    private void ApplyFollowSpeed(Horse horse, float distancePixels, float stopDistancePixels)
+    private void ApplyFollowSpeed(Horse horse, float distancePixels)
     {
-        float excessDistanceTiles = Math.Max(0f, distancePixels - stopDistancePixels) / 64f;
-        float catchUpSpeed = MathHelper.Clamp(excessDistanceTiles * 0.5f, 0.5f, 2f);
+        float distanceTiles = distancePixels / 64f;
+        float catchUpSpeed = distanceTiles >= CatchUpFastSpeedDistanceTiles
+            ? 2f
+            : distanceTiles > CatchUpNormalSpeedDistanceTiles
+                ? 1f
+                : 0f;
         SetFollowSpeed(horse, catchUpSpeed);
     }
 
@@ -469,6 +476,12 @@ internal sealed class HorseFollowerService
     {
         if (!hasOriginalHorseSpeed || !ReferenceEquals(speedAdjustedHorse, horse))
             return;
+
+        if (catchUpSpeed <= 0f)
+        {
+            RestoreOriginalHorseSpeed();
+            return;
+        }
 
         float followSpeed = Math.Max(2f, Game1.player.speed + Game1.player.addedSpeed + catchUpSpeed);
         horse.speed = (int)MathF.Floor(followSpeed);
@@ -683,14 +696,18 @@ internal sealed class HorseFollowerService
         activeAnimationDirection = -1;
     }
 
-    private void RestoreHorseSpeed()
+    private void RestoreOriginalHorseSpeed()
     {
         if (hasOriginalHorseSpeed && speedAdjustedHorse is not null)
         {
             speedAdjustedHorse.speed = originalHorseSpeed;
             speedAdjustedHorse.addedSpeed = originalHorseAddedSpeed;
         }
+    }
 
+    private void RestoreHorseSpeed()
+    {
+        RestoreOriginalHorseSpeed();
         speedAdjustedHorse = null;
         hasOriginalHorseSpeed = false;
     }
