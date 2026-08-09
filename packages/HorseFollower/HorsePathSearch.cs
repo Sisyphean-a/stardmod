@@ -58,6 +58,8 @@ internal sealed class HorsePathSearch
 
     internal int SearchedNodeCount { get; private set; }
 
+    internal Point StartTile => start;
+
     // Flow: run a bounded amount of game-thread collision work per update, preserving the full A* frontier for later updates.
     internal void Advance(int nodeBudget)
     {

@@ -65,20 +65,20 @@ internal sealed class HorseFollowController : PathFindController
         }
 
         Vector2 previousPosition = horse.Position;
-        int direction = MoveAlongPath(out bool blocked);
-        bool moved = !horse.Position.Equals(previousPosition);
+        int direction = MoveAlongPath(out _);
+        Vector2 delta = horse.Position - previousPosition;
+        bool moved = delta != Vector2.Zero;
+        if (moved)
+            direction = GetDirection(delta);
         if (!moved)
         {
             pausedTimer += time.ElapsedGameTime.Milliseconds;
             horse.stopWithoutChangingFrame();
-            log($"controller-pause reason={(blocked ? "collision" : "no-motion")} direction={direction} pausedMs={pausedTimer} path={GetPathCount()} distance={GetDistanceToTarget():0.0} position={FormatPosition(horse.Position)}");
         }
         else
         {
             pausedTimer = 0;
             animate(horse, direction);
-            Vector2 delta = horse.Position - previousPosition;
-            log($"controller-move direction={direction} delta={FormatPosition(delta)} path={GetPathCount()} distance={GetDistanceToTarget():0.0} speed={horse.speed + horse.addedSpeed:0.00} position={FormatPosition(horse.Position)}");
         }
 
         bool finished = !HasPath || IsStuck || ShouldStopForTargetDistance();

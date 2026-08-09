@@ -131,12 +131,6 @@ internal sealed class RiderNavigationController : PathFindController
         if (Game1.isWarping || Game1.locationRequest is not null)
             return true;
 
-        if (!portalAttempted)
-        {
-            portalAttempted = true;
-            portalAttempt();
-        }
-
         int direction = OutdoorRouteGraph.GetPortalDirection(
             location,
             portalEdge!.SourceExitTile,
@@ -149,10 +143,14 @@ internal sealed class RiderNavigationController : PathFindController
             && currentWarp.TargetX == portalEdge.TargetEntryTile.X
             && currentWarp.TargetY == portalEdge.TargetEntryTile.Y)
         {
-            rider.warpFarmer(currentWarp, direction);
-            return Game1.isWarping
-                || Game1.locationRequest is not null
-                || !OutdoorWarpTracker.IsSameLocation(rider.currentLocation, location);
+            if (!portalAttempted)
+            {
+                portalAttempted = true;
+                portalAttempt();
+                rider.warpFarmer(currentWarp, direction);
+            }
+
+            return true;
         }
 
         rider.movementDirections.Clear();

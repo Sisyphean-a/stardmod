@@ -517,6 +517,7 @@ internal sealed class HorseNavigationService
         state = HorseNavigationState.WaitingForWarp;
         warpWaitTicks = 0;
         statusText = $"正在通过 {edge.TargetLocation.NameOrUniqueName} 出口";
+        DetachRiderControllerForWarp();
         Log($"navigation-warp waiting edge={edge.Key}");
     }
 
@@ -603,12 +604,26 @@ internal sealed class HorseNavigationService
         riderController = null;
     }
 
+    // Flow: once a Warp is requested, release the controller before the game's delayed transition begins so it cannot request the same Warp again.
+    private void DetachRiderControllerForWarp()
+    {
+        RiderNavigationController? controller = riderController;
+        riderController = null;
+        if (controller is not null && ReferenceEquals(Game1.player.controller, controller))
+            Game1.player.controller = null;
+        Game1.player.stopWithoutChangingFrame();
+        if (activeHorse is not null)
+            activeHorse.stopWithoutChangingFrame();
+        horseAnimator.Reset();
+    }
+
     private void DetachRiderControllerAfterWarp()
     {
         RiderNavigationController? controller = riderController;
         riderController = null;
         if (controller is not null && ReferenceEquals(Game1.player.controller, controller))
-            Game1.player.stopWithoutChangingFrame();
+            Game1.player.controller = null;
+        Game1.player.stopWithoutChangingFrame();
         horseAnimator.Reset();
     }
 
