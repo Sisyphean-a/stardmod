@@ -72,8 +72,22 @@ internal static class HarvestWithScytheFeature
             if (!code[index].Calls(original))
                 continue;
 
+            int originalIndex = index;
+            CodeInstruction originalInstruction = code[originalIndex];
             foreach (CodeInstruction toolInstruction in toolInstructions)
-                code.Insert(index++, toolInstruction);
+            {
+                CodeInstruction insertedInstruction = toolInstruction.Clone();
+                if (index == originalIndex)
+                {
+                    // Rule: the matched call can be a branch target; transfer its control-flow metadata to the first inserted instruction.
+                    insertedInstruction.labels.AddRange(originalInstruction.labels);
+                    insertedInstruction.blocks.AddRange(originalInstruction.blocks);
+                    originalInstruction.labels.Clear();
+                    originalInstruction.blocks.Clear();
+                }
+
+                code.Insert(index++, insertedInstruction);
+            }
 
             code[index].opcode = OpCodes.Call;
             code[index].operand = replacement;

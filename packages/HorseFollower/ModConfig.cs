@@ -9,4 +9,6 @@ public sealed class ModConfig
     public int FollowStartDistance { get; set; } = 6;
 
     public int StableRadius { get; set; } = 3;
+
+    public int NavigationSearchNodesPerUpdate { get; set; } = 32;
 }

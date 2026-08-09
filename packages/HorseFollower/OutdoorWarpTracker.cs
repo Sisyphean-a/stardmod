@@ -41,6 +41,8 @@ internal sealed class OutdoorWarpTracker
         this.monitor = monitor;
     }
 
+    internal static IEnumerable<string> SupportedOutdoorLocationNames => SupportedOutdoorLocations;
+
     internal bool HasTransitions => transitions.Count > 0;
 
     internal OutdoorTransition? CurrentTransition => transitions.Count > 0 ? transitions[0] : null;
@@ -208,7 +210,12 @@ internal sealed class OutdoorWarpTracker
         return startsNewRoute;
     }
 
-    private static bool IsSupportedOutdoorLocation(GameLocation location)
+    internal static bool IsSupportedOutdoorLocationName(string locationName)
+    {
+        return SupportedOutdoorLocations.Contains(locationName);
+    }
+
+    internal static bool IsSupportedOutdoorLocation(GameLocation location)
     {
         return location.IsOutdoors
             && !location.IsTemporary

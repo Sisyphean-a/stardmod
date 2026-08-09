@@ -12,13 +12,13 @@ internal sealed class HorseFollowerService
 {
     private const float MinimumOutdoorExitArrivalDistancePixels = 80f;
     private const int PathSearchNodesPerUpdate = 16;
-    private const int HorseWalkAnimationFrameDurationMilliseconds = 70;
     private const float CatchUpNormalSpeedDistanceTiles = 7f;
     private const float CatchUpFastSpeedDistanceTiles = 10f;
 
     private readonly ModConfig config;
     private readonly IMonitor monitor;
     private readonly OutdoorWarpTracker outdoorWarpTracker;
+    private readonly HorseWalkAnimator horseAnimator = new();
 
     private int ReplanIntervalTicks => config.CheckInterval * 3;
 
@@ -34,7 +34,6 @@ internal sealed class HorseFollowerService
     private int ticksSincePlan;
     private Point plannedTargetTile;
     private bool hasPlannedTarget;
-    private int activeAnimationDirection = -1;
     private Horse? speedAdjustedHorse;
     private int originalHorseSpeed;
     private float originalHorseAddedSpeed;
@@ -99,7 +98,7 @@ internal sealed class HorseFollowerService
 
         if (mountedHorse is not null)
         {
-            StopFollowController();
+            StopFollowController(stopHorse: false);
             outdoorWarpTracker.Clear();
             ClearPathFailure();
             RestoreHorseSpeed();
@@ -125,6 +124,8 @@ internal sealed class HorseFollowerService
             return;
 
         UpdateFollow(trackedHorse);
+        if (followController is not null && ReferenceEquals(trackedHorse.controller, followController))
+            horseAnimator.Tick(trackedHorse, Game1.currentGameTime);
     }
 
     private bool CanStartFollow(Horse horse)
@@ -401,8 +402,8 @@ internal sealed class HorseFollowerService
             completedRequest.TargetTile,
             completedRequest.TargetPosition,
             completedRequest.StoppingDistancePixels,
-            UpdateFollowAnimation,
-            MaintainHorseWalkAnimation,
+            horseAnimator.Animate,
+            horseAnimator.Maintain,
             LogFollow,
             completedSearch.Path);
         LogFollow(
@@ -486,104 +487,6 @@ internal sealed class HorseFollowerService
         float followSpeed = Math.Max(2f, Game1.player.speed + Game1.player.addedSpeed + catchUpSpeed);
         horse.speed = (int)MathF.Floor(followSpeed);
         horse.addedSpeed = followSpeed - horse.speed;
-    }
-
-    private void UpdateFollowAnimation(Horse horse, int direction)
-    {
-        if (activeAnimationDirection == -1)
-            StartHorseWalkAnimation(horse, direction, preservePhase: false);
-        else if (activeAnimationDirection != direction)
-            StartHorseWalkAnimation(horse, direction, preservePhase: true);
-        else
-            MaintainHorseWalkAnimation(horse);
-    }
-
-    // Guarantee: while this controller owns the horse, Horse.update may not turn the walk sequence into a one-shot animation.
-    private void MaintainHorseWalkAnimation(Horse horse)
-    {
-        if (activeAnimationDirection == -1)
-            StartHorseWalkAnimation(horse, horse.FacingDirection, preservePhase: false);
-        else if (!IsCurrentHorseWalkAnimation(horse, activeAnimationDirection))
-            StartHorseWalkAnimation(horse, activeAnimationDirection, preservePhase: false);
-
-        horse.FacingDirection = activeAnimationDirection;
-        horse.flip = activeAnimationDirection == 3;
-        horse.drawOffset = activeAnimationDirection == 3 ? Vector2.Zero : new Vector2(-16f, 0f);
-        horse.Sprite.loop = true;
-    }
-
-    // Rule: visual turns apply only between full gait cycles; movement continues in the latest path direction.
-    private void StartHorseWalkAnimation(Horse horse, int direction, bool preservePhase)
-    {
-        int animationIndex = preservePhase && IsCurrentHorseWalkAnimation(horse, activeAnimationDirection)
-            ? horse.Sprite.currentAnimationIndex
-            : 0;
-        float animationTimer = preservePhase && IsCurrentHorseWalkAnimation(horse, activeAnimationDirection)
-            ? horse.Sprite.timer
-            : 0f;
-        activeAnimationDirection = direction;
-        horse.Sprite.loop = true;
-        horse.Sprite.setCurrentAnimation(direction switch
-        {
-            0 => new List<FarmerSprite.AnimationFrame>
-            {
-                new(15, HorseWalkAnimationFrameDurationMilliseconds),
-                new(16, HorseWalkAnimationFrameDurationMilliseconds),
-                new(17, HorseWalkAnimationFrameDurationMilliseconds),
-                new(18, HorseWalkAnimationFrameDurationMilliseconds),
-                new(19, HorseWalkAnimationFrameDurationMilliseconds),
-                new(20, HorseWalkAnimationFrameDurationMilliseconds),
-            },
-            1 => new List<FarmerSprite.AnimationFrame>
-            {
-                new(8, HorseWalkAnimationFrameDurationMilliseconds),
-                new(9, HorseWalkAnimationFrameDurationMilliseconds),
-                new(10, HorseWalkAnimationFrameDurationMilliseconds),
-                new(11, HorseWalkAnimationFrameDurationMilliseconds),
-                new(12, HorseWalkAnimationFrameDurationMilliseconds),
-                new(13, HorseWalkAnimationFrameDurationMilliseconds),
-            },
-            3 => new List<FarmerSprite.AnimationFrame>
-            {
-                new(8, HorseWalkAnimationFrameDurationMilliseconds, secondaryArm: false, flip: true),
-                new(9, HorseWalkAnimationFrameDurationMilliseconds, secondaryArm: false, flip: true),
-                new(10, HorseWalkAnimationFrameDurationMilliseconds, secondaryArm: false, flip: true),
-                new(11, HorseWalkAnimationFrameDurationMilliseconds, secondaryArm: false, flip: true),
-                new(12, HorseWalkAnimationFrameDurationMilliseconds, secondaryArm: false, flip: true),
-                new(13, HorseWalkAnimationFrameDurationMilliseconds, secondaryArm: false, flip: true),
-            },
-            _ => new List<FarmerSprite.AnimationFrame>
-            {
-                new(1, HorseWalkAnimationFrameDurationMilliseconds),
-                new(2, HorseWalkAnimationFrameDurationMilliseconds),
-                new(3, HorseWalkAnimationFrameDurationMilliseconds),
-                new(4, HorseWalkAnimationFrameDurationMilliseconds),
-                new(5, HorseWalkAnimationFrameDurationMilliseconds),
-                new(6, HorseWalkAnimationFrameDurationMilliseconds),
-            },
-        });
-        animationIndex %= horse.Sprite.CurrentAnimation.Count;
-        horse.Sprite.currentAnimationIndex = animationIndex;
-        horse.Sprite.CurrentFrame = horse.Sprite.CurrentAnimation[animationIndex].frame;
-        horse.Sprite.timer = animationTimer;
-    }
-
-    private static int GetHorseWalkStartFrame(int direction)
-    {
-        return direction switch
-        {
-            0 => 15,
-            1 or 3 => 8,
-            _ => 1,
-        };
-    }
-
-    private static bool IsCurrentHorseWalkAnimation(Horse horse, int direction)
-    {
-        int startFrame = GetHorseWalkStartFrame(direction);
-        return horse.Sprite.CurrentAnimation is { Count: 6 }
-            && horse.Sprite.CurrentFrame >= startFrame
-            && horse.Sprite.CurrentFrame < startFrame + 6;
     }
 
     private static void SetHorseIdle(Horse horse)
@@ -677,14 +580,15 @@ internal sealed class HorseFollowerService
         return stableArea.Intersects(Game1.player.GetBoundingBox());
     }
 
-    private void StopFollowController()
+    private void StopFollowController(bool stopHorse = true)
     {
         CancelPathSearch();
         if (trackedHorse is not null)
         {
             if (followController is not null && ReferenceEquals(trackedHorse.controller, followController))
                 trackedHorse.controller = null;
-            trackedHorse.stopWithoutChangingFrame();
+            if (stopHorse)
+                trackedHorse.stopWithoutChangingFrame();
         }
 
         if (trackedHorse is { rider: null } horse)
@@ -693,7 +597,7 @@ internal sealed class HorseFollowerService
         followController = null;
         ticksSincePlan = RetryIntervalTicks;
         hasPlannedTarget = false;
-        activeAnimationDirection = -1;
+        horseAnimator.Reset();
     }
 
     private void RestoreOriginalHorseSpeed()

@@ -9,12 +9,14 @@ namespace Toolbox;
 
 public sealed class ModEntry : Mod
 {
+    private const string StandaloneHarvestWithScytheId = "bcmpinc.HarvestWithScythe";
     private AutomaticGatesFeature automaticGatesFeature = null!;
     private InputMethodFeature inputMethodFeature = null!;
     private ToolboxOptionsTab toolboxOptionsTab = null!;
     private ModConfig Config = null!;
     private Vector2 lastPlayerPosition;
     private bool isInFarmArea;
+    private bool standaloneHarvestWithScytheLoaded;
 
     public override void Entry(IModHelper helper)
     {
@@ -29,8 +31,17 @@ public sealed class ModEntry : Mod
         FarmMusicFeature.ApplyPatches(harmony);
         FenceDecayFeature.Initialize(() => Config);
         FenceDecayFeature.ApplyPatches(harmony);
-        HarvestWithScytheFeature.Initialize(() => Config);
-        HarvestWithScytheFeature.ApplyPatches(harmony);
+        standaloneHarvestWithScytheLoaded = helper.ModRegistry.IsLoaded(StandaloneHarvestWithScytheId);
+        if (standaloneHarvestWithScytheLoaded)
+        {
+            // Rule: the standalone mod patches the same game methods, so only one implementation may own them.
+            Monitor.Log("检测到独立版“使用镰刀收割”，已跳过工具箱内置补丁；请只保留一个版本。", LogLevel.Warn);
+        }
+        else
+        {
+            HarvestWithScytheFeature.Initialize(() => Config);
+            HarvestWithScytheFeature.ApplyPatches(harmony);
+        }
 
         helper.Events.GameLoop.GameLaunched += OnGameLaunched;
         helper.Events.Player.Warped += OnPlayerWarped;
@@ -157,12 +168,15 @@ public sealed class ModEntry : Mod
             value => Config.EnableInputMethodControl = value,
             () => "自动输入法控制",
             () => "游戏操作时关闭系统输入法；游戏出现文字输入框时自动启用。关闭后立即恢复。");
-        api.AddBoolOption(
-            ModManifest,
-            () => Config.EnableHarvestWithScythe,
-            value => Config.EnableHarvestWithScythe = value,
-            () => "镰刀收割",
-            () => "允许用镰刀收割作物、花朵和地面觅食物；不支持用剑代替镰刀。");
+        if (!standaloneHarvestWithScytheLoaded)
+        {
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.EnableHarvestWithScythe,
+                value => Config.EnableHarvestWithScythe = value,
+                () => "镰刀收割",
+                () => "允许用镰刀收割作物、花朵和地面觅食物；不支持用剑代替镰刀。");
+        }
     }
 
     private void OnPlayerWarped(object? sender, WarpedEventArgs e)

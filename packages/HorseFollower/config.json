@@ -2,5 +2,6 @@
   "CheckInterval": 10,
   "FollowDistance": 4,
   "FollowStartDistance": 6,
-  "StableRadius": 3
+  "StableRadius": 3,
+  "NavigationSearchNodesPerUpdate": 32
 }
