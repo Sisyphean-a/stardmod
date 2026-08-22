@@ -29,6 +29,10 @@ public sealed class ModConfig
 
     public bool EnableHarvestWithScythe { get; set; } = true;
 
+    public bool EnableQuickStack { get; set; } = true;
+
+    public int QuickStackRange { get; set; } = 14;
+
     public bool EnablePassableCrops { get; set; } = true;
 
     public bool PassableCrops { get; set; } = true;

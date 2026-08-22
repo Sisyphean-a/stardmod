@@ -22,6 +22,7 @@
 - **栅栏防腐朽**：阻止栅栏和大门因时间流逝损失耐久。
 - **自动开关门**：面对关闭的大门时自动打开，离开相邻格后按配置延迟关闭由本功能打开的大门。
 - **镰刀收割**：允许使用真正的镰刀收割作物、花朵和地面觅食物；不支持用剑代替镰刀。检测到独立版 `bcmpinc.HarvestWithScythe` 时会跳过内置补丁，避免重复修改游戏方法。
+- **快速堆叠到附近箱子**：在背包内使用按钮，将物品合并到配置距离内当前地点普通箱子或大箱子的相同物品堆叠；检测到独立版 `gaussfire.ConvenientInventory` 时跳过内置功能。
 - **配置入口**：提供游戏菜单内的工具箱设置页，也支持 Generic Mod Config Menu（GMCM）。
 
 配置文件：[`packages/Toolbox/config.json`](packages/Toolbox/config.json)

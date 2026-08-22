@@ -9,6 +9,7 @@ namespace Toolbox;
 public sealed class ModEntry : Mod
 {
     private const string StandaloneHarvestWithScytheId = "bcmpinc.HarvestWithScythe";
+    private const string StandaloneConvenientInventoryId = "gaussfire.ConvenientInventory";
     private const string StandalonePassableCropsId = "NCarigon.PassableCrops";
     private const string StandaloneNpcMapLocationsId = "Bouhm.NPCMapLocations";
     private AutomaticGatesFeature automaticGatesFeature = null!;
@@ -18,6 +19,7 @@ public sealed class ModEntry : Mod
     private Vector2 lastPlayerPosition;
     private bool isInFarmArea;
     private bool standaloneHarvestWithScytheLoaded;
+    private bool standaloneConvenientInventoryLoaded;
     private bool standalonePassableCropsLoaded;
     private bool standaloneNpcMapLocationsLoaded;
     private NpcMapLocationsFeature? npcMapLocationsFeature;
@@ -33,6 +35,17 @@ public sealed class ModEntry : Mod
         LightRadiusFeature.ApplyPatches(harmony);
         FenceDecayFeature.Initialize(() => Config);
         FenceDecayFeature.ApplyPatches(harmony);
+
+        standaloneConvenientInventoryLoaded = helper.ModRegistry.IsLoaded(StandaloneConvenientInventoryId);
+        if (standaloneConvenientInventoryLoaded)
+        {
+            Monitor.Log("检测到独立版“Convenient Inventory”，已跳过工具箱内置快速堆叠功能；请只保留一个版本。", LogLevel.Warn);
+        }
+        else
+        {
+            QuickStackFeature.Initialize(helper, () => Config, Monitor);
+            QuickStackFeature.ApplyPatches(harmony);
+        }
 
         standalonePassableCropsLoaded = helper.ModRegistry.IsLoaded(StandalonePassableCropsId);
         if (standalonePassableCropsLoaded)
@@ -196,6 +209,24 @@ public sealed class ModEntry : Mod
                 value => Config.EnableHarvestWithScythe = value,
                 () => "镰刀收割",
                 () => "允许用镰刀收割作物、花朵和地面觅食物；不支持用剑代替镰刀。");
+        }
+
+        if (!standaloneConvenientInventoryLoaded)
+        {
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.EnableQuickStack,
+                value => Config.EnableQuickStack = value,
+                () => "快速堆叠到附近箱子",
+                () => "在背包页面显示按钮，将物品合并到附近普通箱子的已有堆叠中。");
+            api.AddNumberOption(
+                ModManifest,
+                () => Config.QuickStackRange,
+                value => Config.QuickStackRange = value,
+                () => "快速堆叠距离",
+                () => "搜索玩家周围多少格内的普通箱子。",
+                1,
+                64);
         }
 
         if (!standalonePassableCropsLoaded)

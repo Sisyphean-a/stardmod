@@ -108,6 +108,11 @@ internal sealed class ToolboxOptionsPage : IClickableMenu
             case 8:
                 config.EnableNpcMapLocations = !config.EnableNpcMapLocations;
                 break;
+            case 9:
+                if (!QuickStackFeature.IsAvailable)
+                    return;
+                config.EnableQuickStack = !config.EnableQuickStack;
+                break;
             default:
                 return;
         }
@@ -156,6 +161,9 @@ internal sealed class ToolboxOptionsPage : IClickableMenu
             case 7:
                 config.NpcCacheTicks = (uint)Math.Clamp((int)config.NpcCacheTicks + direction * 15, 15, 600);
                 break;
+            case 8:
+                config.QuickStackRange = Math.Clamp(config.QuickStackRange + direction, 1, 64);
+                break;
             default:
                 return;
         }
@@ -177,6 +185,7 @@ internal sealed class ToolboxOptionsPage : IClickableMenu
             6 => ("镰刀收割", getConfig().EnableHarvestWithScythe),
             7 => ("穿过作物和物体", getConfig().EnablePassableCrops),
             8 => ("NPC地图位置", getConfig().EnableNpcMapLocations),
+            9 => ("快速堆叠到附近箱子", QuickStackFeature.IsAvailable && getConfig().EnableQuickStack),
             _ => throw new ArgumentOutOfRangeException(nameof(index))
         };
 
@@ -196,6 +205,7 @@ internal sealed class ToolboxOptionsPage : IClickableMenu
             5 => ("可穿过的普通树生长阶段", $"{getConfig().PassableTreeGrowth}"),
             6 => ("可穿过的果树生长阶段", $"{getConfig().PassableFruitTreeGrowth}"),
             7 => ("NPC位置刷新间隔", $"{getConfig().NpcCacheTicks} 帧"),
+            8 => ("快速堆叠距离", $"{getConfig().QuickStackRange} 格"),
             _ => throw new ArgumentOutOfRangeException(nameof(index))
         };
 
@@ -232,7 +242,7 @@ internal sealed class ToolboxOptionsPage : IClickableMenu
         batch.DrawString(Game1.smallFont, text, position, color);
     }
 
-    private int GetRowCount() => section == SettingsSection.Features ? 9 : 8;
+    private int GetRowCount() => section == SettingsSection.Features ? 10 : 9;
 
     private Rectangle GetRowBounds(int index)
     {

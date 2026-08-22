@@ -54,5 +54,7 @@
     <MakeDir Directories="$(ModOutputPath)" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModOutputPath)" />
     <Copy SourceFiles="$(ProjectDir)manifest.json;$(ProjectDir)config.json" DestinationFolder="$(ModOutputPath)" />
+    <MakeDir Directories="$(ModOutputPath)assets" Condition="Exists('$(ProjectDir)assets')" />
+    <Copy SourceFiles="$(ProjectDir)assets/quickStackIcon.png" DestinationFolder="$(ModOutputPath)assets/" Condition="Exists('$(ProjectDir)assets/quickStackIcon.png')" />
   </Target>
 </Project>

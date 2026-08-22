@@ -11,6 +11,8 @@
   "AutomaticGateCloseDelay": 0,
   "EnableInputMethodControl": true,
   "EnableHarvestWithScythe": true,
+  "EnableQuickStack": true,
+  "QuickStackRange": 14,
   "EnablePassableCrops": true,
   "PassableCrops": true,
   "PassableScarecrows": true,

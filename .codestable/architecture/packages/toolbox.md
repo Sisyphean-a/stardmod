@@ -14,6 +14,7 @@ scope: package:toolbox
 - 防止栅栏和大门因时间流逝而腐朽。
 - 自动打开玩家面前的关闭大门，并在玩家离开后按配置延迟关闭。
 - 提供用镰刀收割作物、花朵和地面觅食物的简化功能，不把剑当作镰刀；检测到旧的独立版 HarvestWithScythe 时跳过内置补丁，避免重复修改游戏方法。
+- 提供背包内快速堆叠到附近箱子功能，距离可配置；只处理当前地点的普通箱子和大箱子，检测到独立版 ConvenientInventory 时跳过内置补丁，避免重复按钮和物品转移。
 - 提供可配置的穿过作物、茶树、树苗、果树、杂草、洒水器、稻草人和觅食物功能；检测到旧的独立版 PassableCrops 时跳过内置补丁，避免重复修改碰撞和绘制方法。
 - 在原版世界地图和 HUD 小地图上显示 NPC、特殊商人、多人农民和农场建筑的位置，并提供 NPC 过滤与小地图配置；检测到旧的独立版 NPCMapLocations 时跳过内置地图功能，避免重复替换地图页。
 - 保留恢复出的动物信息调试处理器，但当前不注册按钮事件。
@@ -28,6 +29,7 @@ scope: package:toolbox
 - 栅栏防腐朽补丁：`packages/Toolbox/FenceDecayFeature.cs`。
 - 自动开关门事件控制器：`packages/Toolbox/AutomaticGatesFeature.cs`。
 - 镰刀收割 Harmony 补丁：`packages/Toolbox/HarvestWithScytheFeature.cs`。
+- 快速堆叠背包按钮和箱子转移：`packages/Toolbox/QuickStackFeature.cs`、`packages/Toolbox/assets/quickStackIcon.png`。
 - 穿过作物 Harmony 补丁：`packages/Toolbox/PassableCropsFeature.cs`。
 - NPC 地图位置与小地图：`packages/Toolbox/NpcMapLocationsFeature.cs`。
 - 可选 GMCM 运行时桥接：`packages/Toolbox/GenericModConfigMenuAdapter.cs`。
@@ -42,12 +44,13 @@ scope: package:toolbox
 - 栅栏防腐朽补丁只由主机更新同步的栅栏生命值，并阻止原版的时间流逝损耗；大门维持原版双倍耐久。
 - 自动开关门只处理已由该功能打开的大门；玩家面对关闭的大门时打开，离开其相邻格后按 `AutomaticGateCloseDelay` 关闭，关闭功能不会强制关闭已打开的大门。
 - 镰刀收割由单一 `EnableHarvestWithScythe` 开关控制；开启时沿用默认行为：普通作物、花朵和觅食物可用镰刀收割，地面觅食物不要求位于耕地上，原本仅镰刀作物仍不能徒手收割；只识别实际镰刀，不支持剑替代。若检测到 `bcmpinc.HarvestWithScythe`，工具箱跳过这组内置补丁并记录警告，避免两个 mod 同时转译相同方法。
+- 快速堆叠由 `EnableQuickStack` 和 `QuickStackRange` 控制；背包按钮按距离排序扫描当前地点的普通箱子/大箱子，把背包物品合并到已有相同堆叠，已有堆叠装满时才在同一箱子中新增堆叠。不会处理空箱中没有同类物品的物品，也不会处理冰箱、梳妆台、磨坊或其他特殊库存。若检测到 `gaussfire.ConvenientInventory`，工具箱跳过补丁并记录警告。
 - 穿过作物由 `EnablePassableCrops` 控制；分类开关和树木生长阶段沿用 PassableCrops 配置，只有农民可穿过，除非开启 `PassableByAll`。碰撞、减速、摇晃、声音和可选自定义绘制由同一补丁负责。检测到 `NCarigon.PassableCrops` 时跳过内置补丁并记录警告。
 - NPC 地图功能由 `EnableNpcMapLocations` 控制；地图页使用原版 `WorldMapManager` 计算室外和建筑室内位置，小地图按 `ShowMinimap` 和排除列表显示，并按缓存帧数更新。检测到 `Bouhm.NPCMapLocations` 时跳过内置地图页和小地图事件并记录警告。
 - NPC 地图默认按任务、生日、好感度、同位置和已交谈状态过滤；切换工具箱功能配置会立即刷新标记和当前地图页。农场建筑使用工具箱绘制的简化标记，不依赖独立 mod 的外部图片资源；Android 触摸使用左键拖动小地图，桌面继续使用右键拖动。
 - 游戏菜单中的工具箱页签分为功能开关和参数两页；每次点击都立即写入配置并应用对应功能，GMCM 修改也应即时反映到运行中的功能。
 - GMCM 重置配置时必须同步光源功能持有的配置引用，并立即刷新当前场景的光源半径。
-- 功能开关包括自动抚摸、两类光源半径、栅栏防腐朽、自动开关门、自动输入法控制、镰刀收割、穿过作物和 NPC 地图位置；光源配置变化会立即重算当前场景的光源半径，且只有主机写入同步光源。
+- 功能开关包括自动抚摸、两类光源半径、栅栏防腐朽、自动开关门、自动输入法控制、镰刀收割、快速堆叠、穿过作物和 NPC 地图位置；光源配置变化会立即重算当前场景的光源半径，且只有主机写入同步光源。
 - 工具箱以 `net6.0` 托管 DLL 作为跨平台运行时边界；不依赖 `net6.0-android` 应用目标，也不在包内引入 Android 原生 UI 或桌面原生库。
 - 自动输入法控制只在 Windows 生效；`InputMethodFeature` 在其他平台不实例化 Windows 实现，因此 Android 不加载 SDL Windows 信息和 `imm32.dll` 调用。Windows 实现仍通过 SDL 取得实际窗口句柄并保留原有输入法上下文。
 - GMCM 是可选外部集成；工具箱通过反射桥接查询 API，未安装或版本不兼容时只跳过配置菜单，不阻止工具箱主体加载。
