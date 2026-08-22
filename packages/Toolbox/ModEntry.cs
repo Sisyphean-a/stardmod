@@ -1,4 +1,3 @@
-using GenericModConfigMenu;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
@@ -10,6 +9,8 @@ namespace Toolbox;
 public sealed class ModEntry : Mod
 {
     private const string StandaloneHarvestWithScytheId = "bcmpinc.HarvestWithScythe";
+    private const string StandalonePassableCropsId = "NCarigon.PassableCrops";
+    private const string StandaloneNpcMapLocationsId = "Bouhm.NPCMapLocations";
     private AutomaticGatesFeature automaticGatesFeature = null!;
     private InputMethodFeature inputMethodFeature = null!;
     private ToolboxOptionsTab toolboxOptionsTab = null!;
@@ -17,6 +18,9 @@ public sealed class ModEntry : Mod
     private Vector2 lastPlayerPosition;
     private bool isInFarmArea;
     private bool standaloneHarvestWithScytheLoaded;
+    private bool standalonePassableCropsLoaded;
+    private bool standaloneNpcMapLocationsLoaded;
+    private NpcMapLocationsFeature? npcMapLocationsFeature;
 
     public override void Entry(IModHelper helper)
     {
@@ -27,10 +31,31 @@ public sealed class ModEntry : Mod
         Harmony harmony = new(ModManifest.UniqueID);
         LightRadiusFeature.Initialize(Config, ModManifest);
         LightRadiusFeature.ApplyPatches(harmony);
-        FarmMusicFeature.Initialize(() => Config);
-        FarmMusicFeature.ApplyPatches(harmony);
         FenceDecayFeature.Initialize(() => Config);
         FenceDecayFeature.ApplyPatches(harmony);
+
+        standalonePassableCropsLoaded = helper.ModRegistry.IsLoaded(StandalonePassableCropsId);
+        if (standalonePassableCropsLoaded)
+        {
+            Monitor.Log("检测到独立版“合格作物”，已跳过工具箱内置补丁；请只保留一个版本。", LogLevel.Warn);
+        }
+        else
+        {
+            PassableCropsFeature.Initialize(() => Config);
+            PassableCropsFeature.ApplyPatches(harmony);
+        }
+
+        standaloneNpcMapLocationsLoaded = helper.ModRegistry.IsLoaded(StandaloneNpcMapLocationsId);
+        if (standaloneNpcMapLocationsLoaded)
+        {
+            Monitor.Log("检测到独立版“NPC地图位置”，已跳过工具箱内置功能；请只保留一个版本。", LogLevel.Warn);
+        }
+        else
+        {
+            npcMapLocationsFeature = new NpcMapLocationsFeature(helper, ModManifest, () => Config);
+            npcMapLocationsFeature.RegisterEvents();
+        }
+
         standaloneHarvestWithScytheLoaded = helper.ModRegistry.IsLoaded(StandaloneHarvestWithScytheId);
         if (standaloneHarvestWithScytheLoaded)
         {
@@ -57,7 +82,7 @@ public sealed class ModEntry : Mod
 
     private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
     {
-        IGenericModConfigMenuApi? api = Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
+        GenericModConfigMenuAdapter? api = GenericModConfigMenuAdapter.TryCreate(Helper.ModRegistry, Monitor);
         if (api is null)
             return;
 
@@ -68,6 +93,7 @@ public sealed class ModEntry : Mod
                 Config = new ModConfig();
                 LightRadiusFeature.SetConfig(Config);
                 LightRadiusFeature.RefreshCurrentLocation();
+                npcMapLocationsFeature?.OnConfigChanged();
             },
             save: () => Helper.WriteConfig(Config));
         api.AddBoolOption(
@@ -139,12 +165,6 @@ public sealed class ModEntry : Mod
             () => "所有非家具光源的半径倍率。");
         api.AddBoolOption(
             ModManifest,
-            () => Config.EnableFarmMusic,
-            value => Config.EnableFarmMusic = value,
-            () => "农场音乐保持",
-            () => "在农场与农场建筑之间换场时保持音乐播放器音乐。");
-        api.AddBoolOption(
-            ModManifest,
             () => Config.EnableFenceDecay,
             value => Config.EnableFenceDecay = value,
             () => "栅栏防腐朽",
@@ -176,6 +196,254 @@ public sealed class ModEntry : Mod
                 value => Config.EnableHarvestWithScythe = value,
                 () => "镰刀收割",
                 () => "允许用镰刀收割作物、花朵和地面觅食物；不支持用剑代替镰刀。");
+        }
+
+        if (!standalonePassableCropsLoaded)
+        {
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.EnablePassableCrops,
+                value => Config.EnablePassableCrops = value,
+                () => "穿过作物和物体",
+                () => "允许农民穿过作物、茶树、树苗、杂草、洒水器和稻草人。");
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.PassableCrops,
+                value => Config.PassableCrops = value,
+                () => "穿过作物",
+                () => "允许穿过所有作物。");
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.PassableScarecrows,
+                value => Config.PassableScarecrows = value,
+                () => "穿过稻草人",
+                () => "允许穿过稻草人。");
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.PassableSprinklers,
+                value => Config.PassableSprinklers = value,
+                () => "穿过洒水器",
+                () => "允许穿过洒水器。");
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.PassableForage,
+                value => Config.PassableForage = value,
+                () => "穿过觅食物",
+                () => "允许穿过地面觅食物。");
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.PassableTeaBushes,
+                value => Config.PassableTeaBushes = value,
+                () => "穿过茶树",
+                () => "允许穿过成熟茶树。");
+            api.AddNumberOption(
+                ModManifest,
+                () => Config.PassableTreeGrowth,
+                value => Config.PassableTreeGrowth = value,
+                () => "可穿过的树木生长阶段",
+                () => "允许穿过不高于此阶段的普通树木，0 到 5。",
+                0,
+                5);
+            api.AddNumberOption(
+                ModManifest,
+                () => Config.PassableFruitTreeGrowth,
+                value => Config.PassableFruitTreeGrowth = value,
+                () => "可穿过的果树生长阶段",
+                () => "允许穿过不高于此阶段的果树，-1 表示不允许。",
+                -1,
+                5);
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.PassableWeeds,
+                value => Config.PassableWeeds = value,
+                () => "穿过杂草",
+                () => "允许穿过杂草。");
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.PassableByAll,
+                value => Config.PassableByAll = value,
+                () => "允许所有生物穿过",
+                () => "不只允许农民穿过，也允许其他生物穿过。");
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.SlowDownWhenPassing,
+                value => Config.SlowDownWhenPassing = value,
+                () => "穿过时减速",
+                () => "穿过物体时像经过高草一样略微减速。");
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.ShakeWhenPassing,
+                value => Config.ShakeWhenPassing = value,
+                () => "穿过时摇晃",
+                () => "经过物体时让物体摇晃。");
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.PlaySoundWhenPassing,
+                value => Config.PlaySoundWhenPassing = value,
+                () => "穿过时播放声音",
+                () => "经过物体时播放草丛摩擦声。");
+        }
+
+        if (!standaloneNpcMapLocationsLoaded)
+        {
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.EnableNpcMapLocations,
+                value =>
+                {
+                    Config.EnableNpcMapLocations = value;
+                    OnNpcMapConfigChanged();
+                },
+                () => "NPC地图位置",
+                () => "在游戏地图和小地图上显示NPC的当前位置。");
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.ShowMinimap,
+                value =>
+                {
+                    Config.ShowMinimap = value;
+                    OnNpcMapConfigChanged();
+                },
+                () => "显示NPC小地图",
+                () => "在游戏界面左上角显示NPC小地图。");
+            api.AddKeybindList(
+                ModManifest,
+                () => Config.MinimapToggleKey,
+                value => Config.MinimapToggleKey = value,
+                () => "小地图切换键",
+                () => "按此键显示或隐藏NPC小地图。");
+            api.AddNumberOption(
+                ModManifest,
+                () => Config.MinimapWidth,
+                value =>
+                {
+                    Config.MinimapWidth = value;
+                    OnNpcMapConfigChanged();
+                },
+                () => "小地图宽度",
+                () => "小地图宽度（配置值会按游戏UI比例放大）。",
+                45,
+                180,
+                15);
+            api.AddNumberOption(
+                ModManifest,
+                () => Config.MinimapHeight,
+                value =>
+                {
+                    Config.MinimapHeight = value;
+                    OnNpcMapConfigChanged();
+                },
+                () => "小地图高度",
+                () => "小地图高度（配置值会按游戏UI比例放大）。",
+                45,
+                180,
+                15);
+            api.AddNumberOption(
+                ModManifest,
+                () => Config.MinimapOpacity,
+                value =>
+                {
+                    Config.MinimapOpacity = value;
+                    OnNpcMapConfigChanged();
+                },
+                () => "小地图不透明度",
+                () => "小地图的不透明度。",
+                0.05f,
+                1f,
+                0.05f);
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.OnlySameLocation,
+                value =>
+                {
+                    Config.OnlySameLocation = value;
+                    OnNpcMapConfigChanged();
+                },
+                () => "只显示同位置NPC",
+                () => "只显示与玩家处于同一室内或室外区域的NPC。");
+            api.AddNumberOption(
+                ModManifest,
+                () => Config.HeartLevelMin,
+                value =>
+                {
+                    Config.HeartLevelMin = value;
+                    OnNpcMapConfigChanged();
+                },
+                () => "最小好感度",
+                () => "只显示好感度不低于此值的NPC。",
+                0,
+                14);
+            api.AddNumberOption(
+                ModManifest,
+                () => Config.HeartLevelMax,
+                value =>
+                {
+                    Config.HeartLevelMax = value;
+                    OnNpcMapConfigChanged();
+                },
+                () => "最大好感度",
+                () => "只显示好感度不高于此值的NPC。",
+                0,
+                14);
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.ShowQuests,
+                value =>
+                {
+                    Config.ShowQuests = value;
+                    OnNpcMapConfigChanged();
+                },
+                () => "显示任务和生日",
+                () => "在NPC标记上显示任务或生日提示。");
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.ShowHiddenVillagers,
+                value =>
+                {
+                    Config.ShowHiddenVillagers = value;
+                    OnNpcMapConfigChanged();
+                },
+                () => "显示隐藏村民",
+                () => "显示原本未遇见或默认隐藏的村民。");
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.ShowHorse,
+                value =>
+                {
+                    Config.ShowHorse = value;
+                    OnNpcMapConfigChanged();
+                },
+                () => "显示马",
+                () => "在地图上显示马的位置。");
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.ShowChildren,
+                value =>
+                {
+                    Config.ShowChildren = value;
+                    OnNpcMapConfigChanged();
+                },
+                () => "显示孩子",
+                () => "在地图上显示孩子的位置。");
+            api.AddBoolOption(
+                ModManifest,
+                () => Config.ShowFarmBuildings,
+                value =>
+                {
+                    Config.ShowFarmBuildings = value;
+                    OnNpcMapConfigChanged();
+                },
+                () => "显示农场建筑",
+                () => "在地图上显示农场建筑标记。");
+            api.AddNumberOption(
+                ModManifest,
+                () => (int)Config.NpcCacheTicks,
+                value => Config.NpcCacheTicks = (uint)value,
+                () => "NPC位置刷新间隔",
+                () => "NPC标记更新间隔（帧）。",
+                15,
+                600,
+                15);
         }
     }
 
@@ -241,6 +509,12 @@ public sealed class ModEntry : Mod
             LightRadiusFeature.RefreshCurrentLocation();
         if (petAnimals && Config.EnableAutoPet)
             CheckAndPetAnimals();
+        OnNpcMapConfigChanged();
+    }
+
+    private void OnNpcMapConfigChanged()
+    {
+        npcMapLocationsFeature?.OnConfigChanged();
     }
 
     private void OnButtonPressed(object? sender, ButtonPressedEventArgs e)

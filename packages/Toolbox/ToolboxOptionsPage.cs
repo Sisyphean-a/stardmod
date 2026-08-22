@@ -91,19 +91,22 @@ internal sealed class ToolboxOptionsPage : IClickableMenu
                 refreshLights = true;
                 break;
             case 3:
-                config.EnableFarmMusic = !config.EnableFarmMusic;
-                break;
-            case 4:
                 config.EnableFenceDecay = !config.EnableFenceDecay;
                 break;
-            case 5:
+            case 4:
                 config.EnableAutomaticGates = !config.EnableAutomaticGates;
                 break;
-            case 6:
+            case 5:
                 config.EnableInputMethodControl = !config.EnableInputMethodControl;
                 break;
-            case 7:
+            case 6:
                 config.EnableHarvestWithScythe = !config.EnableHarvestWithScythe;
+                break;
+            case 7:
+                config.EnablePassableCrops = !config.EnablePassableCrops;
+                break;
+            case 8:
+                config.EnableNpcMapLocations = !config.EnableNpcMapLocations;
                 break;
             default:
                 return;
@@ -144,6 +147,15 @@ internal sealed class ToolboxOptionsPage : IClickableMenu
             case 4:
                 config.AutomaticGateCloseDelay = Math.Max(0, config.AutomaticGateCloseDelay + direction * 100);
                 break;
+            case 5:
+                config.PassableTreeGrowth = Math.Clamp(config.PassableTreeGrowth + direction, 0, 5);
+                break;
+            case 6:
+                config.PassableFruitTreeGrowth = Math.Clamp(config.PassableFruitTreeGrowth + direction, -1, 5);
+                break;
+            case 7:
+                config.NpcCacheTicks = (uint)Math.Clamp((int)config.NpcCacheTicks + direction * 15, 15, 600);
+                break;
             default:
                 return;
         }
@@ -159,11 +171,12 @@ internal sealed class ToolboxOptionsPage : IClickableMenu
             0 => ("自动抚摸", getConfig().EnableAutoPet),
             1 => ("家具光源半径", getConfig().EnableFurnitureLightRadius),
             2 => ("物体光源半径", getConfig().EnableObjectLightRadius),
-            3 => ("农场音乐保持", getConfig().EnableFarmMusic),
-            4 => ("栅栏防腐朽", getConfig().EnableFenceDecay),
-            5 => ("自动开关门", getConfig().EnableAutomaticGates),
-            6 => ("自动输入法控制", getConfig().EnableInputMethodControl),
-            7 => ("镰刀收割", getConfig().EnableHarvestWithScythe),
+            3 => ("栅栏防腐朽", getConfig().EnableFenceDecay),
+            4 => ("自动开关门", getConfig().EnableAutomaticGates),
+            5 => ("自动输入法控制", getConfig().EnableInputMethodControl),
+            6 => ("镰刀收割", getConfig().EnableHarvestWithScythe),
+            7 => ("穿过作物和物体", getConfig().EnablePassableCrops),
+            8 => ("NPC地图位置", getConfig().EnableNpcMapLocations),
             _ => throw new ArgumentOutOfRangeException(nameof(index))
         };
 
@@ -180,6 +193,9 @@ internal sealed class ToolboxOptionsPage : IClickableMenu
             2 => ("家具光源半径倍率", getConfig().FurnitureLightRadius.ToString("0.0")),
             3 => ("物体光源半径倍率", getConfig().ObjectLightRadius.ToString("0.0")),
             4 => ("自动关门延迟", $"{getConfig().AutomaticGateCloseDelay} 毫秒"),
+            5 => ("可穿过的普通树生长阶段", $"{getConfig().PassableTreeGrowth}"),
+            6 => ("可穿过的果树生长阶段", $"{getConfig().PassableFruitTreeGrowth}"),
+            7 => ("NPC位置刷新间隔", $"{getConfig().NpcCacheTicks} 帧"),
             _ => throw new ArgumentOutOfRangeException(nameof(index))
         };
 
@@ -216,7 +232,7 @@ internal sealed class ToolboxOptionsPage : IClickableMenu
         batch.DrawString(Game1.smallFont, text, position, color);
     }
 
-    private int GetRowCount() => section == SettingsSection.Features ? 8 : 5;
+    private int GetRowCount() => section == SettingsSection.Features ? 9 : 8;
 
     private Rectangle GetRowBounds(int index)
     {

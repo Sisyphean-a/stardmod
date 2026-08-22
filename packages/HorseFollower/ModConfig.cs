@@ -10,5 +10,6 @@ public sealed class ModConfig
 
     public int StableRadius { get; set; } = 3;
 
+    // Reserved for the retained navigation implementation; navigation is currently not registered.
     public int NavigationSearchNodesPerUpdate { get; set; } = 32;
 }

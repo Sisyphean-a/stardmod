@@ -2,9 +2,9 @@
 scope: package:horse-follower
 ---
 
-# 马匹跟随与骑乘导航包
+# 马匹跟随包
 
-`packages/HorseFollower` 是用户明确指定为独立 mod 的马匹跟随与骑乘导航包，运行时身份为 `xixifu.HorseFollower`，入口程序集为 `HorseFollower.dll`。
+`packages/HorseFollower` 是用户明确指定为独立 mod 的马匹跟随包，运行时身份为 `xixifu.HorseFollower`，入口程序集为 `HorseFollower.dll`。当前发布模式只启用下马后跟随；骑乘自动导航代码暂时保留，但所有平台均不注册。
 
 ## 职责
 
@@ -15,8 +15,8 @@ scope: package:horse-follower
 - 房屋等室内入口以及图腾、权杖、矿车、公交等非步行传送不会建立跨图路线；马停留在最后一个可达室外地图。
 - 在马棚内部或马棚周围 `StableRadius` 格范围内下马时取消本次跟随。
 - 新的一天清除跟随状态，重新骑马后才建立新的跟随会话。
-- 玩家骑马时提供固定 11 个主要店铺目的地；自动导航控制 `Farmer.controller`，保持玩家和马作为一个骑乘整体沿普通室外 Warp 移动，并在室外入口附近停车。
-- 自动导航使用独立状态机、目的地目录、出口图和骑乘玩家路径搜索，不接管下马跟随会话。
+- 保留固定 11 个主要店铺目的地的骑乘自动导航实现；该功能当前所有平台均关闭，后续恢复时再决定新的启用方式。
+- 自动导航使用独立状态机、目的地目录、出口图和骑乘玩家路径搜索，不接管下马跟随会话；当前发布模式不注册这些事件。
 
 ## 边界与锚点
 
@@ -24,8 +24,8 @@ scope: package:horse-follower
 - 状态机、路线调度与失败缓存：`packages/HorseFollower/HorseFollowerService.cs`。
 - 增量 A* 路线搜索：`packages/HorseFollower/HorsePathSearch.cs`。
 - 原版室外步行出口识别与跨图队列：`packages/HorseFollower/OutdoorWarpTracker.cs`。
-- 骑乘导航目的地目录和入口安全停车候选：`packages/HorseFollower/HorseNavigationDestination.cs`。
-- 骑乘导航状态机、HUD、弹窗和事件编排：`packages/HorseFollower/HorseNavigationService.cs`、`HorseNavigationMenu.cs`。
+- 骑乘导航目的地目录和入口安全停车候选（暂未启用）：`packages/HorseFollower/HorseNavigationDestination.cs`。
+- 骑乘导航状态机、HUD、弹窗和事件编排（暂未启用）：`packages/HorseFollower/HorseNavigationService.cs`、`HorseNavigationMenu.cs`。
 - 普通室外 Warp 出口图：`packages/HorseFollower/OutdoorRouteGraph.cs`。
 - 骑乘玩家增量 A* 与 controller：`packages/HorseFollower/RiderPathSearch.cs`、`RiderNavigationController.cs`。
 - 配置契约：`packages/HorseFollower/ModConfig.cs`、`packages/HorseFollower/config.json`。
@@ -44,7 +44,7 @@ scope: package:horse-follower
 - 跟随距离使用 4 格停止、6 格启动的像素级滞回；马一进入停止距离就结束追赶，只有距离重新超过启动线才恢复，避免贴身跟随和边界反复启停；同场景跟随速度按距离分段：距离小于等于 7 格恢复马的原始速度，超过 7 格且小于 10 格使用玩家当前速度加 1，达到 10 格使用玩家当前速度加 2；跨图移动固定使用玩家当前速度加 2，结束跟随后恢复马的原始速度。
 - 稳定范围以马匹所属 Stable 为准，不会因为靠近其他马棚而取消跟随。
 - 跟随诊断日志统一使用 `[HorseFollower]` 前缀并以 Trace 级别写入 SMAPI 日志；其中 `controller-move`、`controller-pause`、`service-stop` 和 `replan-request` 用于区分实际位移、碰撞阻塞、距离停止和路线重规划。
-- 骑乘导航只在骑马的支持室外地图且无活动菜单时显示 HUD 入口；方向键立即取消，菜单暂停后恢复，计划外 Warp、下马、外部 player controller 或真实碰撞路径失败会显式结束并记录原因。
+- 骑乘导航实现当前所有平台均不注册，不显示 HUD 入口、不注册导航按键或菜单事件；若后续重新启用，方向键取消、菜单暂停和失败状态规则仍需重新确认。
 - 目的地入口使用当前游戏版本的固定室外 Action 锚点；社区中心缺少 `ccDoorUnlock` 与 `JojaMember` 时仍显示但置灰。停车候选必须通过入口距离、真实马碰撞框和增量 A* 验证；导航不进入室内、不使用公交/矿车/图腾/船等特殊传送。
 - 普通 Warp 的原始源 tile 可能是地图边界或阻挡 tile；骑乘导航必须规划到从当前方向接近的地图内侧 tile，再由 `Farmer.MovePosition` 触发 Warp，不能把源 tile 当作可站终点。
 - 骑乘时玩家和马作为一个移动单元由 `Farmer.MovePosition` 驱动；骑乘路线规划和移动预检必须使用 Farmer 的原版碰撞语义（包括农场出口的 NPCBarrier 规则），不能把独立马的 NPC 碰撞规则套到骑手身上，也不能直接改位置。
