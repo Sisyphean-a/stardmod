@@ -31,13 +31,22 @@ internal static class QuickStackFeature
     internal static void ApplyPatches(Harmony harmony)
     {
         harmony.Patch(
-            AccessTools.Method(typeof(InventoryPage), nameof(InventoryPage.receiveLeftClick))!,
+            AccessTools.Method(
+                typeof(InventoryPage),
+                nameof(InventoryPage.receiveLeftClick),
+                new[] { typeof(int), typeof(int), typeof(bool) })!,
             prefix: new HarmonyMethod(typeof(QuickStackFeature), nameof(ReceiveLeftClickPrefix)));
         harmony.Patch(
-            AccessTools.Method(typeof(InventoryPage), nameof(InventoryPage.performHoverAction))!,
+            AccessTools.Method(
+                typeof(InventoryPage),
+                nameof(InventoryPage.performHoverAction),
+                new[] { typeof(int), typeof(int) })!,
             postfix: new HarmonyMethod(typeof(QuickStackFeature), nameof(PerformHoverActionPostfix)));
         harmony.Patch(
-            AccessTools.Method(typeof(InventoryPage), nameof(InventoryPage.draw))!,
+            AccessTools.Method(
+                typeof(InventoryPage),
+                nameof(InventoryPage.draw),
+                new[] { typeof(SpriteBatch) })!,
             postfix: new HarmonyMethod(typeof(QuickStackFeature), nameof(DrawPostfix)));
     }
 
