@@ -12,6 +12,7 @@ public sealed class ModEntry : Mod
     private const string StandaloneConvenientInventoryId = "gaussfire.ConvenientInventory";
     private const string StandalonePassableCropsId = "NCarigon.PassableCrops";
     private const string StandaloneNpcMapLocationsId = "Bouhm.NPCMapLocations";
+    private const string StandaloneLadderLocatorId = "ChaosEnergy.LadderLocator";
     private AutomaticGatesFeature automaticGatesFeature = null!;
     private InputMethodFeature inputMethodFeature = null!;
     private ModConfig Config = null!;
@@ -21,7 +22,9 @@ public sealed class ModEntry : Mod
     private bool standaloneConvenientInventoryLoaded;
     private bool standalonePassableCropsLoaded;
     private bool standaloneNpcMapLocationsLoaded;
+    private bool standaloneLadderLocatorLoaded;
     private NpcMapLocationsFeature? npcMapLocationsFeature;
+    private LadderLocatorFeature? ladderLocatorFeature;
 
     public override void Entry(IModHelper helper)
     {
@@ -67,6 +70,17 @@ public sealed class ModEntry : Mod
             npcMapLocationsFeature.RegisterEvents();
         }
 
+        standaloneLadderLocatorLoaded = helper.ModRegistry.IsLoaded(StandaloneLadderLocatorId);
+        if (standaloneLadderLocatorLoaded)
+        {
+            Monitor.Log("检测到独立版“梯子定位器”，已跳过工具箱内置版本；请移除独立版，否则仍会使用它原有的高亮行为。", LogLevel.Warn);
+        }
+        else
+        {
+            ladderLocatorFeature = new LadderLocatorFeature(helper, Monitor);
+            ladderLocatorFeature.RegisterEvents();
+        }
+
         standaloneHarvestWithScytheLoaded = helper.ModRegistry.IsLoaded(StandaloneHarvestWithScytheId);
         if (standaloneHarvestWithScytheLoaded)
         {
@@ -107,6 +121,10 @@ public sealed class ModEntry : Mod
                 npcMapLocationsFeature?.OnConfigChanged();
             },
             save: () => Helper.WriteConfig(Config));
+        api.AddSectionTitle(
+            ModManifest,
+            () => "自动抚摸动物",
+            () => "控制农场和畜棚中的自动抚摸功能。");
         api.AddBoolOption(
             ModManifest,
             () => Config.EnableAutoPet,
@@ -134,6 +152,10 @@ public sealed class ModEntry : Mod
             () => "检查玩家周围多少格范围内的动物",
             1,
             5);
+        api.AddSectionTitle(
+            ModManifest,
+            () => "光照范围",
+            () => "控制家具和普通物体的光照半径倍率。");
         api.AddBoolOption(
             ModManifest,
             () => Config.EnableFurnitureLightRadius,
@@ -174,6 +196,10 @@ public sealed class ModEntry : Mod
             },
             () => "物体光线倍率数值",
             () => "所有非家具光源的半径倍率。");
+        api.AddSectionTitle(
+            ModManifest,
+            () => "栅栏与自动门",
+            () => "控制栅栏耐久保护和自动开关门。");
         api.AddBoolOption(
             ModManifest,
             () => Config.EnableFenceDecay,
@@ -193,6 +219,10 @@ public sealed class ModEntry : Mod
             () => "自动关门延迟",
             () => "玩家离开大门相邻格后，等待多少毫秒再关门。",
             0);
+        api.AddSectionTitle(
+            ModManifest,
+            () => "输入与操作",
+            () => "控制游戏操作期间的系统输入法。");
         api.AddBoolOption(
             ModManifest,
             () => Config.EnableInputMethodControl,
@@ -201,6 +231,10 @@ public sealed class ModEntry : Mod
             () => "游戏操作时关闭系统输入法；游戏出现文字输入框时自动启用。关闭后立即恢复。");
         if (!standaloneHarvestWithScytheLoaded)
         {
+            api.AddSectionTitle(
+                ModManifest,
+                () => "镰刀收割",
+                () => "控制用镰刀收割作物、花朵和地面觅食物。");
             api.AddBoolOption(
                 ModManifest,
                 () => Config.EnableHarvestWithScythe,
@@ -211,6 +245,10 @@ public sealed class ModEntry : Mod
 
         if (!standaloneConvenientInventoryLoaded)
         {
+            api.AddSectionTitle(
+                ModManifest,
+                () => "快速整理物品",
+                () => "控制背包中的快速堆叠按钮和搜索范围。");
             api.AddBoolOption(
                 ModManifest,
                 () => Config.EnableQuickStack,
@@ -229,6 +267,10 @@ public sealed class ModEntry : Mod
 
         if (!standalonePassableCropsLoaded)
         {
+            api.AddSectionTitle(
+                ModManifest,
+                () => "穿行与碰撞",
+                () => "控制农民穿过作物、物体和其他环境元素的规则。");
             api.AddBoolOption(
                 ModManifest,
                 () => Config.EnablePassableCrops,
@@ -315,6 +357,10 @@ public sealed class ModEntry : Mod
 
         if (!standaloneNpcMapLocationsLoaded)
         {
+            api.AddSectionTitle(
+                ModManifest,
+                () => "NPC 地图与小地图",
+                () => "控制 NPC、农场建筑和小地图标记的显示规则。");
             api.AddBoolOption(
                 ModManifest,
                 () => Config.EnableNpcMapLocations,
@@ -473,6 +519,17 @@ public sealed class ModEntry : Mod
                 15,
                 600,
                 15);
+        }
+
+        if (!standaloneLadderLocatorLoaded)
+        {
+            api.AddSectionTitle(
+                ModManifest,
+                () => "矿井梯子提示",
+                () => "固定规则：连续破坏十块石头仍未出现梯子后，才显示醒目的彩色下一层入口提示。");
+            api.AddParagraph(
+                ModManifest,
+                () => "此功能没有可调整配置；进入矿井后前十块石头不会显示提示，之后才会标出可能的下一层入口。");
         }
     }
 

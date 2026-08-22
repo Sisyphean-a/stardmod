@@ -39,6 +39,20 @@ internal sealed class GenericModConfigMenuAdapter
         Invoke("Register", manifest, reset, save, false);
     }
 
+    internal void AddSectionTitle(IManifest manifest, Func<string> text, Func<string> tooltip)
+    {
+        object?[] arguments = { manifest, text, tooltip };
+        if (FindMethod("AddSectionTitle", arguments) is not null)
+            Invoke("AddSectionTitle", arguments);
+        else
+            AddParagraph(manifest, text);
+    }
+
+    internal void AddParagraph(IManifest manifest, Func<string> text)
+    {
+        Invoke("AddParagraph", manifest, text);
+    }
+
     internal void AddBoolOption(
         IManifest manifest,
         Func<bool> getValue,

@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Inventories;
+using StardewValley.ItemTypeDefinitions;
 using StardewValley.Menus;
 using StardewValley.Objects;
 
@@ -154,21 +155,23 @@ internal static class QuickStackFeature
             .OrderBy(chest => DistanceSquared(origin, chest.TileLocation))
             .ToList();
 
+        QuickStackItemAnimation animation = new(player, location);
         bool movedAny = false;
         foreach (Chest chest in chests)
         {
             if (chest.GetMutex().IsLocked() && !chest.GetMutex().IsLockHeld())
                 continue;
 
-            movedAny |= StackIntoChest(player, chest);
+            movedAny |= StackIntoChest(player, chest, animation);
         }
 
         Game1.playSound(movedAny ? "Ship" : "cancel");
+        animation.Complete();
         if (movedAny)
             monitor.Log($"已将背包物品堆叠到范围 {range} 格内的附近箱子。", LogLevel.Trace);
     }
 
-    private static bool StackIntoChest(Farmer player, Chest chest)
+    private static bool StackIntoChest(Farmer player, Chest chest, QuickStackItemAnimation animation)
     {
         bool movedAny = false;
         Inventory chestItems = chest.Items;
@@ -186,11 +189,13 @@ internal static class QuickStackFeature
                     continue;
 
                 foundMatchingStack = true;
+                Item animationItem = playerItem.getOne();
                 int beforeStack = playerItem.Stack;
                 playerItem.Stack = chestItem.addToStack(playerItem);
                 if (playerItem.Stack == beforeStack)
                     continue;
 
+                animation.Add(animationItem, chest);
                 movedAny = true;
                 if (playerItem.Stack == 0)
                 {
@@ -203,15 +208,18 @@ internal static class QuickStackFeature
                 && foundMatchingStack
                 && chestItems.Count < chest.GetActualCapacity())
             {
+                Item animationItem = playerItem.getOne();
                 int beforeStack = playerItem.Stack;
                 Item? remaining = chest.addItem(playerItem);
                 if (remaining is null)
                 {
+                    animation.Add(animationItem, chest);
                     player.Items.RemoveButKeepEmptySlot(playerItem);
                     movedAny = true;
                 }
                 else if (remaining.Stack != beforeStack)
                 {
+                    animation.Add(animationItem, chest);
                     movedAny = true;
                 }
             }
@@ -237,5 +245,115 @@ internal static class QuickStackFeature
         int dx = origin.X - (int)target.X;
         int dy = origin.Y - (int)target.Y;
         return dx * dx + dy * dy;
+    }
+
+    private sealed class QuickStackItemAnimation
+    {
+        private static readonly Random Random = new();
+        private readonly Farmer farmer;
+        private readonly GameLocation location;
+        private readonly List<TemporaryAnimatedSprite> sprites = new();
+        private int itemIndex;
+
+        internal QuickStackItemAnimation(Farmer farmer, GameLocation location)
+        {
+            this.farmer = farmer;
+            this.location = location;
+        }
+
+        internal void Add(Item item, Chest chest)
+        {
+            var itemData = ItemRegistry.GetDataOrErrorItem(item.QualifiedItemId);
+            Vector2 source = GetSourcePosition();
+            Vector2 target = (chest.TileLocation + new Vector2(0f, -1.5f)) * 64f;
+            Vector2 displacement = (target - source) * 0.98f;
+            float duration = 10f * MathF.Sqrt(Vector2.Distance(source, target))
+                + 400f
+                - 0.5f * MathF.Min(0f, displacement.Y);
+            float verticalLift = 192f - MathF.Min(0f, displacement.Y);
+            float horizontalDisplacement = displacement.X;
+            Vector2 motion = new(
+                displacement.X + horizontalDisplacement,
+                displacement.Y - verticalLift);
+            Vector2 acceleration = new(
+                -2f * horizontalDisplacement / duration,
+                2f * verticalLift / duration);
+            motion /= duration;
+            acceleration /= duration;
+
+            float baseLayerDepth = 1f - (itemIndex * 2 + 1) * 0.000001f;
+            AddSprite(
+                itemData,
+                source,
+                sourceRectIndex: 0,
+                Color.White,
+                motion,
+                acceleration,
+                duration,
+                baseLayerDepth);
+
+            if (item is ColoredObject colored && !colored.ColorSameIndexAsParentSheetIndex)
+            {
+                AddSprite(
+                    itemData,
+                    source,
+                    sourceRectIndex: 1,
+                    colored.color.Value,
+                    motion,
+                    acceleration,
+                    duration,
+                    1f - itemIndex * 2 * 0.000001f);
+            }
+
+            itemIndex++;
+        }
+
+        internal void Complete()
+        {
+            if (sprites.Count > 0)
+                Game1.Multiplayer.broadcastSprites(location, sprites.ToArray());
+        }
+
+        private void AddSprite(
+            ParsedItemData itemData,
+            Vector2 position,
+            int sourceRectIndex,
+            Color color,
+            Vector2 motion,
+            Vector2 acceleration,
+            float duration,
+            float layerDepth)
+        {
+            TemporaryAnimatedSprite sprite = TemporaryAnimatedSprite.GetTemporaryAnimatedSprite(
+                itemData.TextureName,
+                itemData.GetSourceRect(sourceRectIndex, null),
+                position,
+                flipped: false,
+                alphaFade: 0f,
+                color);
+            sprite.scale = 4f;
+            sprite.totalNumberOfLoops = 0;
+            sprite.interval = duration;
+            sprite.motion = motion;
+            sprite.acceleration = acceleration;
+            sprite.timeBasedMotion = true;
+            sprite.layerDepth = layerDepth;
+            sprites.Add(sprite);
+        }
+
+        private Vector2 GetSourcePosition()
+        {
+            Vector2 facingOffset = farmer.FacingDirection switch
+            {
+                0 => new Vector2(0f, -1.5f) * 64f,
+                1 => new Vector2(0.5f, -1f) * 64f,
+                3 => new Vector2(-0.5f, -1f) * 64f,
+                _ => new Vector2(0f, -1f) * 64f
+            };
+            Vector2 randomOffset = new(
+                Random.NextSingle() * 16f - 8f,
+                Random.NextSingle() * 16f - 8f);
+            return farmer.Position + facingOffset + randomOffset;
+        }
     }
 }
