@@ -17,7 +17,8 @@ internal sealed class AutomaticGatesFeature
 
     internal void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
-        if (!getConfig().EnableAutomaticGates)
+        ModConfig config = getConfig();
+        if (!config.EnableAutomaticGates)
         {
             openedGates.Clear();
             return;
@@ -35,7 +36,7 @@ internal sealed class AutomaticGatesFeature
             OpenFacingGate(player, location);
 
         if (openedGates.Count > 0)
-            CloseDepartedGates(player, location, DateTime.UtcNow);
+            CloseDepartedGates(player, location, DateTime.UtcNow, config.AutomaticGateCloseDelay);
     }
 
     internal void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
@@ -59,9 +60,11 @@ internal sealed class AutomaticGatesFeature
             openedGates[gate] = new GateState(location);
     }
 
-    private void CloseDepartedGates(Farmer player, GameLocation location, DateTime now)
+    private void CloseDepartedGates(Farmer player, GameLocation location, DateTime now, int closeDelay)
     {
-        foreach ((Fence gate, GateState state) in openedGates.ToArray())
+        // Avoid allocating a dictionary snapshot on every update; collect removals only when needed.
+        List<Fence>? gatesToRemove = null;
+        foreach ((Fence gate, GateState state) in openedGates)
         {
             if (!ReferenceEquals(state.Location, location)
                 || !state.Location.objects.TryGetValue(gate.TileLocation, out StardewValley.Object? item)
@@ -69,7 +72,7 @@ internal sealed class AutomaticGatesFeature
                 || !gate.isGate.Value
                 || !gate.isPassable())
             {
-                openedGates.Remove(gate);
+                (gatesToRemove ??= new()).Add(gate);
                 continue;
             }
 
@@ -79,12 +82,18 @@ internal sealed class AutomaticGatesFeature
                 continue;
             }
 
-            state.CloseAfter ??= now.AddMilliseconds(getConfig().AutomaticGateCloseDelay);
+            state.CloseAfter ??= now.AddMilliseconds(closeDelay);
             if (state.CloseAfter > now)
                 continue;
 
             gate.toggleGate(player, open: false);
-            openedGates.Remove(gate);
+            (gatesToRemove ??= new()).Add(gate);
+        }
+
+        if (gatesToRemove is not null)
+        {
+            foreach (Fence gate in gatesToRemove)
+                openedGates.Remove(gate);
         }
     }
 

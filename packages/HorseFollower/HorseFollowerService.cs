@@ -102,10 +102,22 @@ internal sealed class HorseFollowerService
 
         if (mountedHorse is not null)
         {
-            StopFollowController(stopHorse: false);
-            outdoorWarpTracker.Clear();
-            ClearPathFailure();
-            RestoreHorseSpeed();
+            // The mounted state is stable across ticks; clean up only when entering it or changing horses.
+            if (!wasMounted
+                || !ReferenceEquals(trackedHorse, mountedHorse)
+                || followSessionActive
+                || followController is not null
+                || pathSearch is not null
+                || outdoorWarpTracker.HasTransitions
+                || failedPath is not null
+                || hasOriginalHorseSpeed)
+            {
+                StopFollowController(stopHorse: false);
+                outdoorWarpTracker.Clear();
+                ClearPathFailure();
+                RestoreHorseSpeed();
+            }
+
             followSessionActive = false;
             trackedHorse = mountedHorse;
             wasMounted = true;
@@ -491,8 +503,12 @@ internal sealed class HorseFollowerService
         }
 
         float followSpeed = Math.Max(2f, Game1.player.speed + Game1.player.addedSpeed + catchUpSpeed);
-        horse.speed = (int)MathF.Floor(followSpeed);
-        horse.addedSpeed = followSpeed - horse.speed;
+        int targetSpeed = (int)MathF.Floor(followSpeed);
+        float targetAddedSpeed = followSpeed - targetSpeed;
+        if (horse.speed != targetSpeed)
+            horse.speed = targetSpeed;
+        if (horse.addedSpeed != targetAddedSpeed)
+            horse.addedSpeed = targetAddedSpeed;
     }
 
     private static void SetHorseIdle(Horse horse)
@@ -611,8 +627,10 @@ internal sealed class HorseFollowerService
     {
         if (hasOriginalHorseSpeed && speedAdjustedHorse is not null)
         {
-            speedAdjustedHorse.speed = originalHorseSpeed;
-            speedAdjustedHorse.addedSpeed = originalHorseAddedSpeed;
+            if (speedAdjustedHorse.speed != originalHorseSpeed)
+                speedAdjustedHorse.speed = originalHorseSpeed;
+            if (speedAdjustedHorse.addedSpeed != originalHorseAddedSpeed)
+                speedAdjustedHorse.addedSpeed = originalHorseAddedSpeed;
         }
     }
 

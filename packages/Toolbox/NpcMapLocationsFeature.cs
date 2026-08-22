@@ -103,6 +103,8 @@ internal sealed class NpcMapLocationsFeature
     private readonly Func<ModConfig> getConfig;
     private readonly Dictionary<string, NpcMarker> npcMarkers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, BuildingMarker> buildingMarkers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<NpcMarker> orderedNpcMarkers = new();
+    private readonly Dictionary<long, FarmerMapPosition> farmerMapPositions = new();
     private NpcMapPage? mapPage;
     private NpcMapPage? minimapPage;
     private SpriteBatch? minimapSpriteBatch;
@@ -166,6 +168,7 @@ internal sealed class NpcMapLocationsFeature
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
         NormalizeConfig();
+        farmerMapPositions.Clear();
         mapPage = null;
         minimapPage = null;
         ResetMarkers();
@@ -188,6 +191,8 @@ internal sealed class NpcMapLocationsFeature
     {
         npcMarkers.Clear();
         buildingMarkers.Clear();
+        orderedNpcMarkers.Clear();
+        farmerMapPositions.Clear();
         mapPage = null;
         minimapPage = null;
         minimapDragging = false;
@@ -202,6 +207,7 @@ internal sealed class NpcMapLocationsFeature
         if (!e.IsLocalPlayer || !getConfig().EnableNpcMapLocations)
             return;
 
+        farmerMapPositions.Clear();
         UpdateMinimapVisibility(e.NewLocation);
         minimapPage = null;
         UpdateMarkers();
@@ -288,16 +294,17 @@ internal sealed class NpcMapLocationsFeature
         if (!Context.IsWorldReady)
             return;
 
-        if (!getConfig().EnableNpcMapLocations)
+        ModConfig config = getConfig();
+        if (!config.EnableNpcMapLocations)
         {
             RestoreVanillaMapPage();
             return;
         }
 
-        if (e.IsMultipleOf(Math.Max(1u, getConfig().NpcCacheTicks)))
+        if (e.IsMultipleOf(Math.Max(1u, config.NpcCacheTicks)))
             UpdateMarkers();
 
-        if (e.IsMultipleOf(Math.Max(1u, getConfig().MiniMapCacheTicks)))
+        if (e.IsMultipleOf(Math.Max(1u, config.MiniMapCacheTicks)))
             UpdateMinimapPage();
 
         if (Game1.activeClickableMenu is GameMenu menu && menu.currentTab == GameMenu.mapTab)
@@ -329,14 +336,20 @@ internal sealed class NpcMapLocationsFeature
     private void ResetMarkers()
     {
         npcMarkers.Clear();
+        orderedNpcMarkers.Clear();
         if (!Context.IsWorldReady)
             return;
 
         AddSpecialMarkers();
         if (!Context.IsMainPlayer)
+        {
+            RebuildMarkerOrder();
             return;
+        }
+
         foreach (NPC npc in GetVillagers())
             AddNpcMarker(npc);
+        RebuildMarkerOrder();
     }
 
     private void AddSpecialMarkers()
@@ -429,7 +442,14 @@ internal sealed class NpcMapLocationsFeature
             marker.Layer = marker.IsBirthday || marker.HasQuest ? 5 : marker.IsOutdoors ? 6 : 2;
         }
 
+        RebuildMarkerOrder();
         SyncNpcMarkers();
+    }
+
+    private void RebuildMarkerOrder()
+    {
+        orderedNpcMarkers.Clear();
+        orderedNpcMarkers.AddRange(npcMarkers.Values.OrderBy(marker => marker.Layer));
     }
 
     private void SyncNpcMarkers()
@@ -502,20 +522,24 @@ internal sealed class NpcMapLocationsFeature
             if (localNpc is not null)
                 marker.IsHidden = ShouldHide(localNpc, marker);
         }
+
+        RebuildMarkerOrder();
     }
 
     private List<NPC> GetVillagers()
     {
+        ModConfig config = getConfig();
         List<NPC> villagers = new();
+        HashSet<NPC> seen = new();
         Utility.ForEachCharacter(npc =>
         {
             if (npc is not null
                 && !npc.IsInvisible
                 && (npc.IsVillager
                     || npc.isMarried()
-                    || (getConfig().ShowHorse && npc is Horse)
-                    || (getConfig().ShowChildren && npc is Child))
-                && !villagers.Contains(npc))
+                    || (config.ShowHorse && npc is Horse)
+                    || (config.ShowChildren && npc is Child))
+                && seen.Add(npc))
             {
                 villagers.Add(npc);
             }
@@ -523,8 +547,13 @@ internal sealed class NpcMapLocationsFeature
             return true;
         }, false);
 
-        if (getConfig().ShowHorse && Game1.player.isRidingHorse() && Game1.player.mount is not null && !villagers.Contains(Game1.player.mount))
+        if (config.ShowHorse
+            && Game1.player.isRidingHorse()
+            && Game1.player.mount is not null
+            && seen.Add(Game1.player.mount))
+        {
             villagers.Add(Game1.player.mount);
+        }
 
         return villagers;
     }
@@ -633,6 +662,21 @@ internal sealed class NpcMapLocationsFeature
         return new MapPosition(mapPosition.Value.Data.Region.Id, (int)pixelPosition.X, (int)pixelPosition.Y);
     }
 
+    private MapPosition? GetCachedWorldMapPosition(Farmer farmer, GameLocation? location, Point tile)
+    {
+        long farmerId = farmer.UniqueMultiplayerID;
+        if (farmerMapPositions.TryGetValue(farmerId, out FarmerMapPosition? cached)
+            && ReferenceEquals(cached.Location, location)
+            && cached.Tile == tile)
+        {
+            return cached.Position;
+        }
+
+        MapPosition? position = GetWorldMapPosition(location, tile);
+        farmerMapPositions[farmerId] = new FarmerMapPosition(location, tile, position);
+        return position;
+    }
+
     private bool IsIgnoredNpcType(NPC npc)
     {
         return string.Equals(
@@ -692,7 +736,10 @@ internal sealed class NpcMapLocationsFeature
         if (!IsMinimapVisible())
             return;
 
-        MapPosition? playerPosition = GetWorldMapPosition(Game1.currentLocation, Game1.player.TilePoint);
+        MapPosition? playerPosition = GetCachedWorldMapPosition(
+            Game1.player,
+            Game1.currentLocation,
+            Game1.player.TilePoint);
         if (playerPosition is null)
             return;
 
@@ -790,7 +837,7 @@ internal sealed class NpcMapLocationsFeature
     {
         foreach (Farmer farmer in Game1.getOnlineFarmers())
         {
-            MapPosition? position = GetWorldMapPosition(farmer.currentLocation, farmer.TilePoint);
+            MapPosition? position = GetCachedWorldMapPosition(farmer, farmer.currentLocation, farmer.TilePoint);
             if (position is null || position.RegionId != page.RegionId)
                 continue;
 
@@ -813,9 +860,12 @@ internal sealed class NpcMapLocationsFeature
         ModConfig config = getConfig();
         Point iconSize = config.NpcIconStyle == NpcIconStyle.Vanilla ? new Point(36, 34) : new Point(32, 30);
 
-        foreach (NpcMarker marker in npcMarkers.Values.Where(marker => marker.Position?.RegionId == regionId).OrderBy(marker => marker.Layer))
+        foreach (NpcMarker marker in orderedNpcMarkers)
         {
-            if (marker.IsHidden || marker.Sprite is null || marker.Position is null)
+            if (marker.Position?.RegionId != regionId
+                || marker.IsHidden
+                || marker.Sprite is null
+                || marker.Position is null)
                 continue;
 
             Rectangle source = marker.GetSourceRect(config.NpcIconStyle);
@@ -912,6 +962,8 @@ internal sealed class NpcMapLocationsFeature
             feature.DrawMarkers(this, b, alpha);
         }
     }
+
+    private sealed record FarmerMapPosition(GameLocation? Location, Point Tile, MapPosition? Position);
 
     private sealed class NpcMarker
     {

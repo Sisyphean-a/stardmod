@@ -32,6 +32,7 @@ internal sealed class HorsePathSearch
     private readonly Dictionary<Point, int> costs = new();
     private readonly Dictionary<Point, Point> previous = new();
     private readonly HashSet<Point> closed = new();
+    private readonly Dictionary<Point, bool> standability = new();
 
     internal HorsePathSearch(
         Horse horse,
@@ -68,6 +69,8 @@ internal sealed class HorsePathSearch
         if (nodeBudget <= 0)
             throw new ArgumentOutOfRangeException(nameof(nodeBudget));
 
+        // Collision state is stable during one update; reuse checks for diagonal neighbours within this batch.
+        standability.Clear();
         PathFindController? activeController = horse.controller;
         horse.controller = null;
         try
@@ -142,13 +145,16 @@ internal sealed class HorsePathSearch
 
     private bool CanHorseStandAt(Point tile)
     {
+        if (standability.TryGetValue(tile, out bool canStand))
+            return canStand;
+
         Vector2 center = GetTileCenter(tile);
         Rectangle bounds = new(
             (int)center.X - horseBounds.Width / 2,
             (int)center.Y - horseBounds.Height / 2,
             horseBounds.Width,
             horseBounds.Height);
-        return !location.isCollidingPosition(
+        canStand = !location.isCollidingPosition(
             bounds,
             Game1.viewport,
             isFarmer: false,
@@ -159,6 +165,8 @@ internal sealed class HorsePathSearch
             projectile: false,
             ignoreCharacterRequirement: false,
             skipCollisionEffects: true);
+        standability[tile] = canStand;
+        return canStand;
     }
 
     private bool IsWithinTargetRadius(Point tile)

@@ -14,13 +14,19 @@ internal static class PassableCropsFeature
 {
     private const string ShakeKey = "xixifu.Toolbox/passable-crops-shake";
 
-    private static Func<ModConfig> getConfig = null!;
+    private static ModConfig currentConfig = null!;
     private static Character? lastCharacter;
     private static DrawState drawState;
 
     internal static void Initialize(Func<ModConfig> getConfig)
     {
-        PassableCropsFeature.getConfig = getConfig;
+        currentConfig = getConfig();
+    }
+
+    internal static void SetConfig(ModConfig config)
+    {
+        // GMCM replaces the config object on reset; keep the hot Harmony path on the current instance.
+        currentConfig = config;
     }
 
     internal static void ApplyPatches(Harmony harmony)
@@ -158,7 +164,7 @@ internal static class PassableCropsFeature
 
     private static void HoeDirtIsPassablePostfix(HoeDirt __instance, ref bool __result, Character c)
     {
-        if (!getConfig().EnablePassableCrops || !getConfig().PassableCrops || __instance.crop is null)
+        if (!currentConfig.EnablePassableCrops || !currentConfig.PassableCrops || __instance.crop is null)
             return;
 
         if (CanPass(c))
@@ -170,8 +176,8 @@ internal static class PassableCropsFeature
 
     private static void BushIsPassablePostfix(Bush __instance, ref bool __result, Character c)
     {
-        if (!getConfig().EnablePassableCrops
-            || !getConfig().PassableTeaBushes
+        if (!currentConfig.EnablePassableCrops
+            || !currentConfig.PassableTeaBushes
             || __instance.size.Value != Bush.largeBush
             || __instance.inPot.Value
             || !CanPass(c))
@@ -186,9 +192,9 @@ internal static class PassableCropsFeature
 
     private static void TreeIsPassablePostfix(Tree __instance, ref bool __result, Character c)
     {
-        if (!getConfig().EnablePassableCrops
+        if (!currentConfig.EnablePassableCrops
             || !CanPass(c)
-            || getConfig().PassableTreeGrowth < GetTreeGrowth(__instance))
+            || currentConfig.PassableTreeGrowth < GetTreeGrowth(__instance))
         {
             return;
         }
@@ -200,9 +206,9 @@ internal static class PassableCropsFeature
 
     private static void FruitTreeIsPassablePostfix(FruitTree __instance, ref bool __result, Character c)
     {
-        if (!getConfig().EnablePassableCrops
+        if (!currentConfig.EnablePassableCrops
             || !CanPass(c)
-            || getConfig().PassableFruitTreeGrowth < Math.Min(__instance.growthStage.Value, 5))
+            || currentConfig.PassableFruitTreeGrowth < Math.Min(__instance.growthStage.Value, 5))
         {
             return;
         }
@@ -234,7 +240,7 @@ internal static class PassableCropsFeature
 
     private static void ObjectIsPassablePostfix(Object __instance, ref bool __result)
     {
-        if (!getConfig().EnablePassableCrops
+        if (!currentConfig.EnablePassableCrops
             || !TryGetPassableObject(__instance, out PassableObjectType objectType)
             || !CanPass(lastCharacter))
         {
@@ -252,21 +258,21 @@ internal static class PassableCropsFeature
     private static void BushDrawPrefix(Bush __instance)
     {
         drawState = default;
-        if (getConfig().EnablePassableCrops && IsPassableBush(__instance))
+        if (currentConfig.EnablePassableCrops && IsPassableBush(__instance))
             drawState = new DrawState(DrawObjectType.Terrain, 0f);
     }
 
     private static void TreeDrawPrefix(Tree __instance)
     {
         drawState = default;
-        if (getConfig().EnablePassableCrops && IsPassableTree(__instance))
+        if (currentConfig.EnablePassableCrops && IsPassableTree(__instance))
             drawState = new DrawState(DrawObjectType.Terrain, 0f);
     }
 
     private static void FruitTreeDrawPrefix(FruitTree __instance)
     {
         drawState = default;
-        if (getConfig().EnablePassableCrops && IsPassableFruitTree(__instance))
+        if (currentConfig.EnablePassableCrops && IsPassableFruitTree(__instance))
             drawState = new DrawState(DrawObjectType.Terrain, 0f);
     }
 
@@ -317,8 +323,8 @@ internal static class PassableCropsFeature
     private static void ObjectDrawPrefix(Object __instance)
     {
         drawState = default;
-        if (!getConfig().EnablePassableCrops
-            || !getConfig().UseCustomDrawing
+        if (!currentConfig.EnablePassableCrops
+            || !currentConfig.UseCustomDrawing
             || !TryGetPassableObject(__instance, out PassableObjectType objectType))
         {
             return;
@@ -337,7 +343,7 @@ internal static class PassableCropsFeature
         if (drawState.Type == DrawObjectType.None)
             return;
 
-        if (getConfig().ShakeWhenPassing)
+        if (currentConfig.ShakeWhenPassing)
             rotation = drawState.Rotation;
 
         if (drawState.Type == DrawObjectType.Scarecrow)
@@ -353,7 +359,7 @@ internal static class PassableCropsFeature
         if (drawState.Type == DrawObjectType.None)
             return;
 
-        if (getConfig().ShakeWhenPassing)
+        if (currentConfig.ShakeWhenPassing)
             rotation = drawState.Rotation;
 
         switch (drawState.Type)
@@ -376,18 +382,18 @@ internal static class PassableCropsFeature
 
     private static bool CanPass(Character? character)
     {
-        return character is Farmer || (character is not null && getConfig().PassableByAll);
+        return character is Farmer || (character is not null && currentConfig.PassableByAll);
     }
 
     private static void SlowDown(Character character)
     {
-        if (character is Farmer farmer && getConfig().SlowDownWhenPassing)
+        if (character is Farmer farmer && currentConfig.SlowDownWhenPassing)
             farmer.temporarySpeedBuff = farmer.stats.Get("Book_Grass") == 0 ? -1f : -0.33f;
     }
 
     private static void ShakeTerrain(TerrainFeature feature, Character character)
     {
-        if (!getConfig().ShakeWhenPassing || character is null)
+        if (!currentConfig.ShakeWhenPassing || character is null)
             return;
 
         switch (feature)
@@ -409,17 +415,17 @@ internal static class PassableCropsFeature
 
     private static bool IsPassableBush(Bush bush)
     {
-        return getConfig().PassableTeaBushes && bush.size.Value == Bush.largeBush && !bush.inPot.Value;
+        return currentConfig.PassableTeaBushes && bush.size.Value == Bush.largeBush && !bush.inPot.Value;
     }
 
     private static bool IsPassableTree(Tree tree)
     {
-        return getConfig().PassableTreeGrowth >= GetTreeGrowth(tree);
+        return currentConfig.PassableTreeGrowth >= GetTreeGrowth(tree);
     }
 
     private static bool IsPassableFruitTree(FruitTree tree)
     {
-        return getConfig().PassableFruitTreeGrowth >= Math.Min(tree.growthStage.Value, 5);
+        return currentConfig.PassableFruitTreeGrowth >= Math.Min(tree.growthStage.Value, 5);
     }
 
     private static int GetTreeGrowth(Tree tree)
@@ -432,7 +438,7 @@ internal static class PassableCropsFeature
 
     private static void ShakeObject(Object item, PassableObjectType type)
     {
-        if (!getConfig().ShakeWhenPassing || item.Location != Game1.currentLocation)
+        if (!currentConfig.ShakeWhenPassing || item.Location != Game1.currentLocation)
             return;
 
         float maxShake = type is PassableObjectType.Scarecrow or PassableObjectType.Sprinkler
@@ -482,7 +488,7 @@ internal static class PassableCropsFeature
     private static bool TryGetPassableObject(Object item, out PassableObjectType type)
     {
         type = PassableObjectType.None;
-        ModConfig config = getConfig();
+        ModConfig config = currentConfig;
         if (!config.EnablePassableCrops || item is null || IsNamed(item, config.ExcludeObjects))
             return false;
 
@@ -538,7 +544,7 @@ internal static class PassableCropsFeature
 
     private static void PlayRustleSound(Vector2 tile, GameLocation? location)
     {
-        if (!getConfig().PlaySoundWhenPassing
+        if (!currentConfig.PlaySoundWhenPassing
             || location is null
             || location != Game1.currentLocation
             || !Utility.isOnScreen(new Point((int)tile.X, (int)tile.Y), 2, location))

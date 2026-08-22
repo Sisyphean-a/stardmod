@@ -15,6 +15,7 @@ internal sealed class WindowsInputMethodFeature
     private readonly Func<bool> isEnabled;
     private readonly IMonitor monitor;
     private IntPtr gameWindow;
+    private IntPtr sdlWindow;
     private IntPtr savedInputContext;
     private bool isInputMethodBlocked;
     private bool hasLoggedInputMethodReassociation;
@@ -48,31 +49,36 @@ internal sealed class WindowsInputMethodFeature
 
     private void BlockInputMethod()
     {
+        if (isInputMethodBlocked)
+        {
+            // SDL's native window lookup is stable while the SDL window handle is unchanged.
+            IntPtr currentSdlWindow = Game1.game1.Window.Handle;
+            if (currentSdlWindow == sdlWindow)
+            {
+                if (!CancelTextComposition(gameWindow))
+                    return;
+
+                ImmAssociateContext(gameWindow, IntPtr.Zero);
+                if (!hasLoggedInputMethodReassociation)
+                {
+                    monitor.Log("检测到输入法上下文被重新关联，已再次屏蔽。", LogLevel.Debug);
+                    hasLoggedInputMethodReassociation = true;
+                }
+
+                return;
+            }
+
+            RestoreInputMethod();
+        }
+
         IntPtr window = GetGameWindowHandle();
         if (window == IntPtr.Zero)
             return;
 
-        if (isInputMethodBlocked && gameWindow != window)
-            RestoreInputMethod();
-
-        if (isInputMethodBlocked)
-        {
-            if (!CancelTextComposition(window))
-                return;
-
-            ImmAssociateContext(window, IntPtr.Zero);
-            if (!hasLoggedInputMethodReassociation)
-            {
-                monitor.Log("检测到输入法上下文被重新关联，已再次屏蔽。", LogLevel.Debug);
-                hasLoggedInputMethodReassociation = true;
-            }
-
-            return;
-        }
-
         CancelTextComposition(window);
         savedInputContext = ImmAssociateContext(window, IntPtr.Zero);
         gameWindow = window;
+        sdlWindow = Game1.game1.Window.Handle;
         isInputMethodBlocked = true;
         hasLoggedInputMethodReassociation = false;
     }
@@ -84,6 +90,7 @@ internal sealed class WindowsInputMethodFeature
 
         ImmAssociateContext(gameWindow, savedInputContext);
         gameWindow = IntPtr.Zero;
+        sdlWindow = IntPtr.Zero;
         savedInputContext = IntPtr.Zero;
         isInputMethodBlocked = false;
         hasLoggedInputMethodReassociation = false;

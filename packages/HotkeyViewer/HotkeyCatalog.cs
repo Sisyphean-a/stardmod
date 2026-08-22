@@ -13,6 +13,7 @@ internal sealed class HotkeyCatalog
     private static readonly StringComparer TextComparer = StringComparer.OrdinalIgnoreCase;
     private readonly IModHelper helper;
     private readonly IMonitor monitor;
+    private Dictionary<string, string>? modDirectoryIndex;
 
     internal HotkeyCatalog(IModHelper helper, IMonitor monitor)
     {
@@ -20,7 +21,7 @@ internal sealed class HotkeyCatalog
         this.monitor = monitor;
     }
 
-    internal HotkeyCatalogResult Build()
+    internal HotkeyCatalogResult Build(bool refreshDirectories = false)
     {
         List<string> warnings = new();
         HashSet<string> gmcmFields = new(TextComparer);
@@ -28,7 +29,7 @@ internal sealed class HotkeyCatalog
 
         entries.AddRange(CollectGameControls());
         entries.AddRange(CollectGenericModConfigMenuEntries(warnings, gmcmFields));
-        entries.AddRange(CollectConfigEntries(warnings, gmcmFields));
+        entries.AddRange(CollectConfigEntries(warnings, gmcmFields, refreshDirectories));
 
         entries = Deduplicate(entries)
             .OrderBy(entry => entry.Source == HotkeySource.Game ? 0 : 1)
@@ -166,9 +167,15 @@ internal sealed class HotkeyCatalog
         }
     }
 
-    private IEnumerable<HotkeyEntry> CollectConfigEntries(List<string> warnings, HashSet<string> gmcmFields)
+    private IEnumerable<HotkeyEntry> CollectConfigEntries(
+        List<string> warnings,
+        HashSet<string> gmcmFields,
+        bool refreshDirectories)
     {
-        Dictionary<string, string> modDirectories = BuildModDirectoryIndex(warnings);
+        // Config files are still read every build; only manifest path discovery is cached until Refresh.
+        Dictionary<string, string> modDirectories = refreshDirectories || modDirectoryIndex is null
+            ? modDirectoryIndex = BuildModDirectoryIndex(warnings)
+            : modDirectoryIndex;
 
         foreach (IModInfo mod in helper.ModRegistry.GetAll().OrderBy(mod => mod.Manifest.Name, TextComparer))
         {

@@ -116,6 +116,7 @@ public sealed class ModEntry : Mod
             reset: () =>
             {
                 Config = new ModConfig();
+                PassableCropsFeature.SetConfig(Config);
                 LightRadiusFeature.SetConfig(Config);
                 LightRadiusFeature.RefreshCurrentLocation();
                 npcMapLocationsFeature?.OnConfigChanged();

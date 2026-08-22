@@ -13,6 +13,11 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
     private readonly HotkeyCatalog catalog;
     private readonly TextBox searchBox;
     private HotkeyCatalogResult catalogResult = new(Array.Empty<HotkeyEntry>(), new Dictionary<string, int>(), Array.Empty<string>());
+    private List<HotkeyEntry>? filteredEntries;
+    private ViewerFilter filteredFilter;
+    private string filteredQuery = "";
+    private int gameEntryCount;
+    private int conflictEntryCount;
     private ViewerFilter filter;
     private int topIndex;
     private string hoverText = "";
@@ -34,7 +39,7 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
         };
 
         PositionSearchBox();
-        RefreshCatalog();
+        RefreshCatalog(refreshDirectories: false);
     }
 
     public override void receiveLeftClick(int x, int y, bool playSound = true)
@@ -59,6 +64,7 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
                 continue;
 
             filter = (ViewerFilter)index;
+            filteredEntries = null;
             topIndex = 0;
             Game1.playSound("smallSelect");
             return;
@@ -143,6 +149,7 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
         if (!lastSearchText.Equals(searchBox.Text, StringComparison.Ordinal))
         {
             lastSearchText = searchBox.Text;
+            filteredEntries = null;
             topIndex = 0;
         }
     }
@@ -197,9 +204,12 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
         drawMouse(batch);
     }
 
-    private void RefreshCatalog()
+    private void RefreshCatalog(bool refreshDirectories = true)
     {
-        catalogResult = catalog.Build();
+        catalogResult = catalog.Build(refreshDirectories);
+        gameEntryCount = catalogResult.Entries.Count(entry => entry.Source == HotkeySource.Game);
+        conflictEntryCount = catalogResult.Entries.Count(catalogResult.IsConflict);
+        filteredEntries = null;
         topIndex = 0;
     }
 
@@ -218,11 +228,8 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
 
     private void DrawSummary(SpriteBatch batch)
     {
-        int gameCount = catalogResult.Entries.Count(entry => entry.Source == HotkeySource.Game);
-        int modCount = catalogResult.Entries.Count - gameCount;
-        int conflictCount = catalogResult.Entries.Count(catalogResult.IsConflict);
-
-        string summary = $"总计 {catalogResult.Entries.Count}  ·  冲突 {conflictCount}  ·  本体 {gameCount}  ·  模组 {modCount}";
+        int modCount = catalogResult.Entries.Count - gameEntryCount;
+        string summary = $"总计 {catalogResult.Entries.Count}  ·  冲突 {conflictEntryCount}  ·  本体 {gameEntryCount}  ·  模组 {modCount}";
         DrawText(batch, summary, Game1.smallFont, new Vector2(xPositionOnScreen + 48, yPositionOnScreen + 112), new Color(96, 64, 32), false);
     }
 
@@ -394,8 +401,14 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
     private List<HotkeyEntry> GetFilteredEntries()
     {
         string query = searchBox.Text.Trim();
-        IEnumerable<HotkeyEntry> entries = catalogResult.Entries;
+        if (filteredEntries is not null
+            && filteredFilter == filter
+            && filteredQuery.Equals(query, StringComparison.Ordinal))
+        {
+            return filteredEntries;
+        }
 
+        IEnumerable<HotkeyEntry> entries = catalogResult.Entries;
         entries = filter switch
         {
             ViewerFilter.Conflicts => entries.Where(catalogResult.IsConflict),
@@ -414,7 +427,10 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
                 || Contains(entry.Detail, query));
         }
 
-        return entries.ToList();
+        filteredFilter = filter;
+        filteredQuery = query;
+        filteredEntries = entries.ToList();
+        return filteredEntries;
     }
 
     private void Scroll(int delta)
