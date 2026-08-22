@@ -98,11 +98,32 @@ internal static class QuickStackFeature
 
     private static ClickableTextureComponent CreateButton(InventoryPage page)
     {
-        Rectangle organizeBounds = page.organizeButton?.bounds
-            ?? new Rectangle(page.xPositionOnScreen + page.width, page.yPositionOnScreen + page.height / 3, 64, 64);
+        ClickableComponent? leftRing = page.equipmentIcons
+            .FirstOrDefault(component => component.name == "Left Ring");
+        Rectangle buttonBounds;
+        if (leftRing is not null)
+        {
+            // Use the empty margin to the left of the equipment column so the button doesn't overlap the portrait.
+            int x = leftRing.bounds.X - leftRing.bounds.Width - 8;
+            if (x < page.xPositionOnScreen + 8)
+                x = leftRing.bounds.Right + 8;
+
+            buttonBounds = new Rectangle(
+                x,
+                leftRing.bounds.Y,
+                leftRing.bounds.Width,
+                leftRing.bounds.Height);
+        }
+        else
+        {
+            Rectangle organizeBounds = page.organizeButton?.bounds
+                ?? new Rectangle(page.xPositionOnScreen + page.width, page.yPositionOnScreen + page.height / 3, 64, 64);
+            buttonBounds = new Rectangle(organizeBounds.X, organizeBounds.Bottom + 8, organizeBounds.Width, organizeBounds.Height);
+        }
+
         ClickableTextureComponent button = new(
             "ToolboxQuickStack",
-            new Rectangle(organizeBounds.X, organizeBounds.Bottom + 8, organizeBounds.Width, organizeBounds.Height),
+            buttonBounds,
             string.Empty,
             ButtonHoverText,
             icon,

@@ -643,12 +643,17 @@ internal sealed class NpcMapLocationsFeature
 
     private bool IsMinimapVisible()
     {
-        if (!getConfig().ShowMinimap || !getConfig().EnableNpcMapLocations || !Context.IsWorldReady)
+        ModConfig config = getConfig();
+        if (!config.ShowMinimap || !config.EnableNpcMapLocations || !Context.IsWorldReady)
             return false;
 
-        GameLocation location = Game1.currentLocation;
-        if (getConfig().MinimapExclusions.Contains(location.NameOrUniqueName)
-            || getConfig().MinimapExclusions.Contains(location.IsOutdoors ? "Outdoors" : "Indoors"))
+        // The current location can be temporarily null while the world is loading or a player is warping.
+        GameLocation? location = Game1.currentLocation;
+        if (location is null)
+            return false;
+
+        if (config.MinimapExclusions.Contains(location.NameOrUniqueName)
+            || config.MinimapExclusions.Contains(location.IsOutdoors ? "Outdoors" : "Indoors"))
         {
             return false;
         }
