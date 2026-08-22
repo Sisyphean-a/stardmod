@@ -14,7 +14,6 @@ public sealed class ModEntry : Mod
     private const string StandaloneNpcMapLocationsId = "Bouhm.NPCMapLocations";
     private AutomaticGatesFeature automaticGatesFeature = null!;
     private InputMethodFeature inputMethodFeature = null!;
-    private ToolboxOptionsTab toolboxOptionsTab = null!;
     private ModConfig Config = null!;
     private Vector2 lastPlayerPosition;
     private bool isInFarmArea;
@@ -29,7 +28,6 @@ public sealed class ModEntry : Mod
         Config = helper.ReadConfig<ModConfig>();
         automaticGatesFeature = new AutomaticGatesFeature(() => Config);
         inputMethodFeature = new InputMethodFeature(() => Config.EnableInputMethodControl, Monitor);
-        toolboxOptionsTab = new ToolboxOptionsTab(helper, () => Config, PersistConfig);
         Harmony harmony = new(ModManifest.UniqueID);
         LightRadiusFeature.Initialize(Config, ModManifest);
         LightRadiusFeature.ApplyPatches(harmony);
@@ -88,16 +86,16 @@ public sealed class ModEntry : Mod
         helper.Events.GameLoop.UpdateTicked += inputMethodFeature.OnUpdateTicked;
         helper.Events.GameLoop.ReturnedToTitle += automaticGatesFeature.OnReturnedToTitle;
         helper.Events.GameLoop.ReturnedToTitle += inputMethodFeature.OnReturnedToTitle;
-        helper.Events.Display.MenuChanged += toolboxOptionsTab.OnMenuChanged;
-        helper.Events.Input.ButtonPressed += toolboxOptionsTab.OnButtonPressed;
-        helper.Events.Display.RenderedActiveMenu += toolboxOptionsTab.OnRenderedActiveMenu;
     }
 
     private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
     {
         GenericModConfigMenuAdapter? api = GenericModConfigMenuAdapter.TryCreate(Helper.ModRegistry, Monitor);
         if (api is null)
+        {
+            Monitor.Log("未检测到 Generic Mod Config Menu；工具箱不会创建自定义设置页，请安装 spacechase0.GenericModConfigMenu 以配置工具箱。", LogLevel.Warn);
             return;
+        }
 
         api.Register(
             ModManifest,
@@ -530,17 +528,6 @@ public sealed class ModEntry : Mod
 
             animal.pet(Game1.player, false);
         }
-    }
-
-    private void PersistConfig(bool refreshLights, bool petAnimals)
-    {
-        Helper.WriteConfig(Config);
-
-        if (refreshLights)
-            LightRadiusFeature.RefreshCurrentLocation();
-        if (petAnimals && Config.EnableAutoPet)
-            CheckAndPetAnimals();
-        OnNpcMapConfigChanged();
     }
 
     private void OnNpcMapConfigChanged()

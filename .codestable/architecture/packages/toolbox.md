@@ -18,7 +18,7 @@ scope: package:toolbox
 - 提供可配置的穿过作物、茶树、树苗、果树、杂草、洒水器、稻草人和觅食物功能；检测到旧的独立版 PassableCrops 时跳过内置补丁，避免重复修改碰撞和绘制方法。
 - 在原版世界地图和 HUD 小地图上显示 NPC、特殊商人、多人农民和农场建筑的位置，并提供 NPC 过滤与小地图配置；检测到旧的独立版 NPCMapLocations 时跳过内置地图功能，避免重复替换地图页。
 - 保留恢复出的动物信息调试处理器，但当前不注册按钮事件。
-- 为这些功能提供一个合并的 `ModConfig`、游戏菜单内的工具箱设置页和可选的 GMCM 配置入口。
+- 为这些功能提供一个合并的 `ModConfig`，配置入口统一使用 Generic Mod Config Menu（GMCM）；工具箱不再创建自定义游戏菜单。
 
 ## 边界与锚点
 
@@ -33,7 +33,6 @@ scope: package:toolbox
 - 穿过作物 Harmony 补丁：`packages/Toolbox/PassableCropsFeature.cs`。
 - NPC 地图位置与小地图：`packages/Toolbox/NpcMapLocationsFeature.cs`。
 - 可选 GMCM 运行时桥接：`packages/Toolbox/GenericModConfigMenuAdapter.cs`。
-- 游戏菜单设置页和页签：`packages/Toolbox/ToolboxOptionsPage.cs`、`packages/Toolbox/ToolboxOptionsTab.cs`。
 - 包身份：`packages/Toolbox/manifest.json`。
 - 构建和游戏程序集引用：`packages/Toolbox/Toolbox.csproj`。
 
@@ -48,10 +47,10 @@ scope: package:toolbox
 - 穿过作物由 `EnablePassableCrops` 控制；分类开关和树木生长阶段沿用 PassableCrops 配置，只有农民可穿过，除非开启 `PassableByAll`。碰撞、减速、摇晃、声音和可选自定义绘制由同一补丁负责。检测到 `NCarigon.PassableCrops` 时跳过内置补丁并记录警告。
 - NPC 地图功能由 `EnableNpcMapLocations` 控制；地图页使用原版 `WorldMapManager` 计算室外和建筑室内位置，小地图按 `ShowMinimap` 和排除列表显示，并按缓存帧数更新。检测到 `Bouhm.NPCMapLocations` 时跳过内置地图页和小地图事件并记录警告。
 - NPC 地图默认按任务、生日、好感度、同位置和已交谈状态过滤；切换工具箱功能配置会立即刷新标记和当前地图页。农场建筑使用工具箱绘制的简化标记，不依赖独立 mod 的外部图片资源；Android 触摸使用左键拖动小地图，桌面继续使用右键拖动。
-- 游戏菜单中的工具箱页签分为功能开关和参数两页；每次点击都立即写入配置并应用对应功能，GMCM 修改也应即时反映到运行中的功能。
+- 配置统一由 GMCM 展示和保存；GMCM 修改应即时反映到运行中的功能，重置和保存作用于同一个工具箱配置对象。
 - GMCM 重置配置时必须同步光源功能持有的配置引用，并立即刷新当前场景的光源半径。
 - 功能开关包括自动抚摸、两类光源半径、栅栏防腐朽、自动开关门、自动输入法控制、镰刀收割、快速堆叠、穿过作物和 NPC 地图位置；光源配置变化会立即重算当前场景的光源半径，且只有主机写入同步光源。
 - 工具箱以 `net6.0` 托管 DLL 作为跨平台运行时边界；不依赖 `net6.0-android` 应用目标，也不在包内引入 Android 原生 UI 或桌面原生库。
 - 自动输入法控制只在 Windows 生效；`InputMethodFeature` 在其他平台不实例化 Windows 实现，因此 Android 不加载 SDL Windows 信息和 `imm32.dll` 调用。Windows 实现仍通过 SDL 取得实际窗口句柄并保留原有输入法上下文。
-- GMCM 是可选外部集成；工具箱通过反射桥接查询 API，未安装或版本不兼容时只跳过配置菜单，不阻止工具箱主体加载。
+- GMCM 是可选外部集成；工具箱通过反射桥接查询 API，未安装或版本不兼容时不阻止工具箱主体加载，但不会创建自定义配置菜单，用户需安装兼容的 GMCM 才能使用游戏内配置入口。
 - 输入法控制的 Windows 查询错误会作为该可选功能的日志暴露，不中断工具箱的动物自动抚摸和其他功能。

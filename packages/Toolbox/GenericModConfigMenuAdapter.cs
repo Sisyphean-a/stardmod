@@ -5,7 +5,7 @@ using StardewModdingAPI;
 namespace Toolbox;
 
 /// <summary>
-/// Optional GMCM bridge which avoids making the desktop-only config menu a load-time dependency.
+/// Optional GMCM bridge which keeps the configuration menu out of the Toolbox assembly's load-time dependencies.
 /// </summary>
 internal sealed class GenericModConfigMenuAdapter
 {
@@ -24,7 +24,7 @@ internal sealed class GenericModConfigMenuAdapter
     {
         try
         {
-            object? api = modRegistry.GetApi<object>(ModId);
+            object? api = modRegistry.GetApi(ModId);
             return api is null ? null : new GenericModConfigMenuAdapter(api, monitor);
         }
         catch (Exception ex)
