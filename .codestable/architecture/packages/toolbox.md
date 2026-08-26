@@ -45,7 +45,7 @@ scope: package:toolbox
 - 镰刀收割由单一 `EnableHarvestWithScythe` 开关控制；开启时沿用默认行为：普通作物、花朵和觅食物可用镰刀收割，地面觅食物不要求位于耕地上，原本仅镰刀作物仍不能徒手收割；只识别实际镰刀，不支持剑替代。若检测到 `bcmpinc.HarvestWithScythe`，工具箱跳过这组内置补丁并记录警告，避免两个 mod 同时转译相同方法。
 - 快速堆叠由 `EnableQuickStack` 和 `QuickStackRange` 控制；背包按钮按距离排序扫描当前地点的普通箱子/大箱子，把背包物品合并到已有相同堆叠，已有堆叠装满时才在同一箱子中新增堆叠。不会处理空箱中没有同类物品的物品，也不会处理冰箱、梳妆台、磨坊或其他特殊库存。若检测到 `gaussfire.ConvenientInventory`，工具箱跳过补丁并记录警告。
 - 穿过作物由 `EnablePassableCrops` 控制；分类开关和树木生长阶段沿用 PassableCrops 配置，只有农民可穿过，除非开启 `PassableByAll`。碰撞、减速、摇晃、声音和可选自定义绘制由同一补丁负责。检测到 `NCarigon.PassableCrops` 时跳过内置补丁并记录警告。
-- NPC 地图功能由 `EnableNpcMapLocations` 控制；地图页使用原版 `WorldMapManager` 计算室外和建筑室内位置，小地图按 `ShowMinimap` 和排除列表显示，并按缓存帧数更新。检测到 `Bouhm.NPCMapLocations` 时跳过内置地图页和小地图事件并记录警告。
+- NPC 地图功能由 `EnableNpcMapLocations` 控制；地图页使用原版 `WorldMapManager` 计算室外和建筑室内位置；小地图场景显示规则见[工具箱领域上下文](../../requirements/contexts/toolbox.md)，并按缓存帧数更新。检测到 `Bouhm.NPCMapLocations` 时跳过内置地图页和小地图事件并记录警告。
 - NPC 地图默认按任务、生日、好感度、同位置和已交谈状态过滤；切换工具箱功能配置会立即刷新标记和当前地图页。农场建筑使用工具箱绘制的简化标记，不依赖独立 mod 的外部图片资源；Android 触摸使用左键拖动小地图，桌面继续使用右键拖动。
 - 配置统一由 GMCM 展示和保存；GMCM 修改应即时反映到运行中的功能，重置和保存作用于同一个工具箱配置对象。
 - GMCM 重置配置时必须同步光源功能持有的配置引用，并立即刷新当前场景的光源半径。

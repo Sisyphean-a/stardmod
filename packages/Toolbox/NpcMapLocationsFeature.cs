@@ -949,7 +949,7 @@ internal sealed class NpcMapLocationsFeature
 
         // The current location can be temporarily null while the world is loading or a player is warping.
         GameLocation? location = Game1.currentLocation;
-        if (location is null)
+        if (location is null || location is MineShaft)
             return false;
 
         if (config.MinimapExclusions.Contains(location.NameOrUniqueName)
