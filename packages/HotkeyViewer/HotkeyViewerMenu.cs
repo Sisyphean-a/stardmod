@@ -22,6 +22,10 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
     private int topIndex;
     private string hoverText = "";
     private string lastSearchText = "";
+    private int catalogRevision = -1;
+    private readonly Dictionary<HotkeyEntry, CachedEntryRender> renderCache = new();
+    private string footerText = "";
+    private string loadingFooterText = "";
 
     internal HotkeyViewerMenu(HotkeyCatalog catalog)
         : base(GetMenuX(), GetMenuY(), GetMenuWidth(), GetMenuHeight(), true)
@@ -39,7 +43,8 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
         };
 
         PositionSearchBox();
-        RefreshCatalog(refreshDirectories: false);
+        catalog.BeginLoad();
+        SyncCatalogResult();
     }
 
     public override void receiveLeftClick(int x, int y, bool playSound = true)
@@ -146,6 +151,7 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
 
     public override void update(GameTime time)
     {
+        SyncCatalogResult();
         if (!lastSearchText.Equals(searchBox.Text, StringComparison.Ordinal))
         {
             lastSearchText = searchBox.Text;
@@ -179,7 +185,7 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
                 continue;
 
             HotkeyEntry entry = entries[entryIndex];
-            hoverText = $"{entry.Action}\n按键：{entry.BindingText}\n来源：{entry.SourceLabel}\n关联：{GetOwnerDisplay(entry)}\n字段：{entry.Detail}";
+            hoverText = $"{entry.Action}\n按键：{entry.BindingText}\n来源：{entry.SourceLabel}\n关联：{entry.OwnerDisplay}\n字段：{entry.Detail}";
             if (catalogResult.IsConflict(entry))
                 hoverText += "\n提示：这个按键也被其他功能使用，可能冲突。";
             return;
@@ -204,13 +210,54 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
         drawMouse(batch);
     }
 
-    private void RefreshCatalog(bool refreshDirectories = true)
+    private void RefreshCatalog()
     {
-        catalogResult = catalog.Build(refreshDirectories);
+        catalog.BeginLoad(forceRefresh: true);
+        SyncCatalogResult();
+        filteredEntries = null;
+        topIndex = 0;
+    }
+
+    private void SyncCatalogResult()
+    {
+        catalog.PumpCompleted();
+        if (catalogRevision == catalog.Revision)
+            return;
+
+        catalogRevision = catalog.Revision;
+        catalogResult = catalog.CurrentResult;
         gameEntryCount = catalogResult.Entries.Count(entry => entry.Source == HotkeySource.Game);
         conflictEntryCount = catalogResult.Entries.Count(catalogResult.IsConflict);
         filteredEntries = null;
         topIndex = 0;
+        RebuildRenderCache();
+    }
+
+    private void RebuildRenderCache()
+    {
+        renderCache.Clear();
+        foreach (HotkeyEntry entry in catalogResult.Entries)
+        {
+            List<CachedBinding> bindings = entry.Bindings
+                .Take(3)
+                .Select(binding =>
+                {
+                    int width = Math.Min(190, Math.Max(48, (int)Game1.smallFont.MeasureString(binding.CompactDisplay).X + 24));
+                    return new CachedBinding(binding, binding.CompactDisplay, width);
+                })
+                .ToList();
+            renderCache[entry] = new CachedEntryRender(
+                TruncateText(entry.Action, Game1.smallFont, width - 660f),
+                TruncateText(entry.OwnerDisplay, Game1.smallFont, 222f),
+                bindings,
+                entry.Bindings.Count > 3 ? $"+{entry.Bindings.Count - 3}" : "");
+        }
+
+        string baseFooter = "滚轮 / ↑↓ 翻页，Esc 关闭。默认只显示键鼠按键；推测项来自 config.json，准确性低于 GMCM。";
+        if (catalogResult.Warnings.Count > 0)
+            baseFooter += $" 警告 {catalogResult.Warnings.Count}";
+        footerText = TruncateText(baseFooter, Game1.smallFont, width - 96f);
+        loadingFooterText = TruncateText(baseFooter + " 正在后台扫描…", Game1.smallFont, width - 96f);
     }
 
     private void DrawHeader(SpriteBatch batch)
@@ -322,9 +369,10 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
         batch.Draw(Game1.staminaRect, new Rectangle(row.X, row.Y, 6, row.Height), conflict ? new Color(190, 80, 65) : GetSourceColor(entry.Source));
 
         DrawBindingPills(batch, entry, new Rectangle(row.X + 18, row.Y + 9, 222, row.Height - 18));
-        DrawTruncatedText(batch, entry.Action, Game1.smallFont, new Vector2(row.X + 260, row.Y + 10), Game1.textColor, row.Width - 660f);
+        CachedEntryRender cached = renderCache[entry];
+        DrawText(batch, cached.ActionText, Game1.smallFont, new Vector2(row.X + 260, row.Y + 10), Game1.textColor, false);
         DrawSourceBadge(batch, new Rectangle(row.Right - 392, row.Y + 11, 96, 30), entry.SourceLabel, GetSourceColor(entry.Source));
-        DrawTruncatedText(batch, GetOwnerDisplay(entry), Game1.smallFont, new Vector2(row.Right - 270, row.Y + 10), Game1.textColor, 222f);
+        DrawText(batch, cached.OwnerText, Game1.smallFont, new Vector2(row.Right - 270, row.Y + 10), Game1.textColor, false);
 
         if (conflict)
         {
@@ -334,29 +382,23 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
         }
     }
 
-    private static string GetOwnerDisplay(HotkeyEntry entry)
-    {
-        return entry.Source == HotkeySource.Game ? "原版设置" : entry.OwnerName;
-    }
-
     private void DrawBindingPills(SpriteBatch batch, HotkeyEntry entry, Rectangle bounds)
     {
         int x = bounds.X;
-        foreach (HotkeyBinding binding in entry.Bindings.Take(3))
+        CachedEntryRender cached = renderCache[entry];
+        foreach (CachedBinding binding in cached.Bindings)
         {
-            string label = GetDisplayBindingLabel(binding);
-            int width = Math.Min(190, Math.Max(48, (int)Game1.smallFont.MeasureString(label).X + 24));
-            if (x + width > bounds.Right)
+            if (x + binding.Width > bounds.Right)
                 break;
 
-            Rectangle pill = new(x, bounds.Y, width, 32);
-            batch.Draw(Game1.staminaRect, pill, catalogResult.BindingUseCounts.TryGetValue(binding.Normalized, out int count) && count > 1 ? new Color(190, 80, 65) : new Color(86, 118, 164));
-            DrawTruncatedText(batch, label, Game1.smallFont, new Vector2(pill.X + 8, pill.Y + 4), Color.White, pill.Width - 16f);
-            x += width + 8;
+            Rectangle pill = new(x, bounds.Y, binding.Width, 32);
+            batch.Draw(Game1.staminaRect, pill, catalogResult.BindingUseCounts.TryGetValue(binding.Binding.Normalized, out int count) && count > 1 ? new Color(190, 80, 65) : new Color(86, 118, 164));
+            DrawText(batch, binding.Label, Game1.smallFont, new Vector2(pill.X + 8, pill.Y + 4), Color.White, false);
+            x += binding.Width + 8;
         }
 
-        if (entry.Bindings.Count > 3)
-            DrawText(batch, $"+{entry.Bindings.Count - 3}", Game1.smallFont, new Vector2(x, bounds.Y + 4), Color.Gray, false);
+        if (!string.IsNullOrEmpty(cached.MoreText))
+            DrawText(batch, cached.MoreText, Game1.smallFont, new Vector2(x, bounds.Y + 4), Color.Gray, false);
     }
 
     private void DrawSourceBadge(SpriteBatch batch, Rectangle bounds, string label, Color color)
@@ -388,14 +430,13 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
 
     private void DrawFooter(SpriteBatch batch)
     {
-        string warning = "滚轮 / ↑↓ 翻页，Esc 关闭。默认只显示键鼠按键；推测项来自 config.json，准确性低于 GMCM。";
-        DrawTruncatedText(
+        DrawText(
             batch,
-            warning,
+            catalog.IsLoading ? loadingFooterText : footerText,
             Game1.smallFont,
             new Vector2(xPositionOnScreen + 48, yPositionOnScreen + height - 52),
             new Color(96, 64, 32),
-            width - 96f);
+            false);
     }
 
     private List<HotkeyEntry> GetFilteredEntries()
@@ -420,11 +461,7 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
         if (!string.IsNullOrWhiteSpace(query))
         {
             entries = entries.Where(entry =>
-                Contains(entry.BindingText, query)
-                || Contains(entry.Action, query)
-                || Contains(entry.OwnerName, query)
-                || Contains(entry.OwnerId, query)
-                || Contains(entry.Detail, query));
+                Contains(entry.SearchText, query));
         }
 
         filteredFilter = filter;
@@ -503,39 +540,6 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
         searchBox.Height = bounds.Height;
     }
 
-    private static string GetDisplayBindingLabel(HotkeyBinding binding)
-    {
-        return string.Join(
-            "+",
-            binding.Display.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(CompactButtonName));
-    }
-
-    private static string CompactButtonName(string button)
-    {
-        return button switch
-        {
-            "LeftControl" or "RightControl" => "Ctrl",
-            "LeftShift" or "RightShift" => "Shift",
-            "LeftAlt" or "RightAlt" => "Alt",
-            "MouseLeft" => "鼠标左",
-            "MouseRight" => "鼠标右",
-            "MouseMiddle" => "鼠标中",
-            "OemQuestion" => "?",
-            "OemTilde" => "~",
-            "OemPipe" => "\\",
-            "OemPeriod" => ".",
-            "OemComma" => ",",
-            "PageUp" => "PgUp",
-            "PageDown" => "PgDn",
-            "Escape" => "Esc",
-            "Space" => "空格",
-            "Enter" => "回车",
-            "Delete" => "Del",
-            _ => button
-        };
-    }
-
     private static string GetFilterLabel(ViewerFilter target)
     {
         return target switch
@@ -573,16 +577,15 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
         DrawText(batch, text, font, new Vector2(bounds.Center.X - size.X / 2f, bounds.Center.Y - size.Y / 2f), color, shadow);
     }
 
-    private static void DrawTruncatedText(SpriteBatch batch, string text, SpriteFont font, Vector2 position, Color color, float maxWidth)
+    private static string TruncateText(string text, SpriteFont font, float maxWidth)
     {
-        if (maxWidth <= 0)
-            return;
+        if (maxWidth <= 0 || font.MeasureString(text).X <= maxWidth)
+            return text;
 
         string value = text;
         while (value.Length > 1 && font.MeasureString(value).X > maxWidth)
             value = value[..^2] + "…";
-
-        DrawText(batch, value, font, position, color, false);
+        return value;
     }
 
     private static void DrawText(SpriteBatch batch, string text, SpriteFont font, Vector2 position, Color color, bool shadow)
@@ -621,6 +624,13 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
     {
         return (Game1.uiViewport.Height - GetMenuHeight()) / 2;
     }
+
+    private sealed record CachedBinding(HotkeyBinding Binding, string Label, int Width);
+    private sealed record CachedEntryRender(
+        string ActionText,
+        string OwnerText,
+        IReadOnlyList<CachedBinding> Bindings,
+        string MoreText);
 
     private enum ViewerFilter
     {
