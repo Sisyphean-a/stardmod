@@ -93,9 +93,8 @@ internal sealed class OutdoorWarpTracker
                 sourceLocation,
                 targetLocation,
                 new Point(warp.X, warp.Y));
-            monitor.Log(
-                $"Captured outdoor exit {sourceLocation.NameOrUniqueName} ({warp.X}, {warp.Y}) -> {targetLocation.NameOrUniqueName}.",
-                LogLevel.Trace);
+            LogTrace(
+                () => $"Captured outdoor exit {sourceLocation.NameOrUniqueName} ({warp.X}, {warp.Y}) -> {targetLocation.NameOrUniqueName}.");
             return;
         }
     }
@@ -130,17 +129,18 @@ internal sealed class OutdoorWarpTracker
             return QueueTransition(horse, transition);
         }
 
-        if (IsSupportedOutdoorLocation(e.OldLocation)
-            && IsSupportedOutdoorLocation(e.NewLocation))
+        if (!IsSupportedOutdoorLocation(e.OldLocation)
+            || !IsSupportedOutdoorLocation(e.NewLocation))
         {
-            monitor.Log(
-                $"Discarded outdoor transition {e.OldLocation.NameOrUniqueName} -> {e.NewLocation.NameOrUniqueName} because no matching walking exit was captured.",
-                LogLevel.Trace);
+            bool hadTransitions = transitions.Count > 0;
             transitions.Clear();
-            return true;
+            return hadTransitions;
         }
 
-        return transitions.Count == 0;
+        LogTrace(
+            () => $"Discarded outdoor transition {e.OldLocation.NameOrUniqueName} -> {e.NewLocation.NameOrUniqueName} because no matching walking exit was captured.");
+        transitions.Clear();
+        return true;
     }
 
     internal void CompleteCurrentTransition()
@@ -204,10 +204,15 @@ internal sealed class OutdoorWarpTracker
 
         bool startsNewRoute = transitions.Count == 0;
         transitions.Add(transition);
-        monitor.Log(
-            $"Queued outdoor horse route {transition.SourceLocation.NameOrUniqueName} ({transition.SourceExitTile.X}, {transition.SourceExitTile.Y}) -> {transition.TargetLocation.NameOrUniqueName}.",
-            LogLevel.Trace);
+        LogTrace(
+            () => $"Queued outdoor horse route {transition.SourceLocation.NameOrUniqueName} ({transition.SourceExitTile.X}, {transition.SourceExitTile.Y}) -> {transition.TargetLocation.NameOrUniqueName}.");
         return startsNewRoute;
+    }
+
+    private void LogTrace(Func<string> messageFactory)
+    {
+        if (monitor.IsVerbose)
+            monitor.Log($"[HorseFollower] {messageFactory()}", LogLevel.Trace);
     }
 
     internal static bool IsSupportedOutdoorLocationName(string locationName)

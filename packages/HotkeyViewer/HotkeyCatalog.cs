@@ -10,6 +10,7 @@ namespace HotkeyViewer;
 
 internal sealed class HotkeyCatalog
 {
+    private const long MaxConfigFileBytes = 16L * 1024 * 1024;
     private static readonly StringComparer TextComparer = StringComparer.OrdinalIgnoreCase;
     private readonly IModHelper helper;
     private readonly IMonitor monitor;
@@ -64,6 +65,7 @@ internal sealed class HotkeyCatalog
         List<HotkeyEntry> baseEntries = new();
         baseEntries.AddRange(CollectGameControls());
         baseEntries.AddRange(CollectGenericModConfigMenuEntries(warnings, gmcmFields));
+        HashSet<string> gmcmFieldsSnapshot = new(gmcmFields, TextComparer);
 
         List<ModSnapshot> mods = helper.ModRegistry.GetAll()
             .Select(mod => new ModSnapshot(mod.Manifest.UniqueID, mod.Manifest.Name))
@@ -90,6 +92,7 @@ internal sealed class HotkeyCatalog
                 forceRefresh,
                 cancellation.Token,
                 baseEntries,
+                gmcmFieldsSnapshot,
                 warnings),
             cancellation.Token);
     }
@@ -136,7 +139,7 @@ internal sealed class HotkeyCatalog
         modDirectoryIndex = loaded.DirectoryIndex;
         directoryWarnings = loaded.DirectoryWarnings;
         configCache = loaded.ConfigCache;
-        catalogResult = ComposeResult(loaded.BaseEntries, loaded.Mods, loaded.ConfigCache, loaded.Warnings);
+        catalogResult = ComposeResult(loaded.BaseEntries, loaded.Mods, loaded.ConfigCache, loaded.GmcmFields, loaded.Warnings);
         isLoading = false;
         revision++;
 
@@ -148,14 +151,10 @@ internal sealed class HotkeyCatalog
         IReadOnlyList<HotkeyEntry> baseEntries,
         IReadOnlyList<ModSnapshot> mods,
         IReadOnlyDictionary<string, ConfigFileCache> cache,
+        HashSet<string> gmcmFields,
         IReadOnlyList<string> warnings)
     {
         List<HotkeyEntry> entries = new(baseEntries);
-        HashSet<string> gmcmFields = new(
-            baseEntries
-                .Where(entry => entry.Source == HotkeySource.GenericModConfigMenu && !string.IsNullOrWhiteSpace(entry.Detail))
-                .Select(entry => GetFieldKey(entry.OwnerId, entry.Detail)),
-            TextComparer);
 
         foreach (ModSnapshot mod in mods)
         {
@@ -214,6 +213,7 @@ internal sealed class HotkeyCatalog
         bool forceRefresh,
         CancellationToken cancellationToken,
         IReadOnlyList<HotkeyEntry> baseEntries,
+        HashSet<string> gmcmFields,
         IReadOnlyList<string> initialWarnings)
     {
         List<string> warnings = new(initialWarnings);
@@ -236,10 +236,14 @@ internal sealed class HotkeyCatalog
             if (!File.Exists(configPath))
                 continue;
 
+            ConfigFileStamp stamp = new(0, DateTime.MinValue);
             try
             {
                 FileInfo info = new(configPath);
-                ConfigFileStamp stamp = new(info.Length, info.LastWriteTimeUtc);
+                stamp = new ConfigFileStamp(info.Length, info.LastWriteTimeUtc);
+                if (info.Length > MaxConfigFileBytes)
+                    throw new InvalidDataException($"config.json 超过 {MaxConfigFileBytes / (1024 * 1024)} MiB 扫描上限。");
+
                 if (!forceRefresh
                     && cacheSnapshot.TryGetValue(configPath, out ConfigFileCache? previous)
                     && previous.Stamp == stamp)
@@ -262,13 +266,13 @@ internal sealed class HotkeyCatalog
                 string message = $"无法读取 {mod.Name} 的 config.json：{ex.Message}";
                 warnings.Add(message);
                 cache[configPath] = new ConfigFileCache(
-                    new ConfigFileStamp(0, DateTime.MinValue),
+                    stamp,
                     Array.Empty<ConfigCandidate>(),
                     message);
             }
         }
 
-        return new LoadResult(generation, baseEntries, mods, directories, cache, warnings, currentDirectoryWarnings);
+        return new LoadResult(generation, baseEntries, mods, directories, cache, gmcmFields, warnings, currentDirectoryWarnings);
     }
 
     private static List<ConfigCandidate> ReadConfigCandidates(string path, CancellationToken cancellationToken)
@@ -304,7 +308,14 @@ internal sealed class HotkeyCatalog
             if (isFinalBlock)
                 break;
             if (buffered == buffer.Length)
-                throw new JsonException("JSON token exceeds the streaming buffer size.");
+            {
+                int expandedLength = checked(buffer.Length * 2);
+                if (expandedLength > MaxConfigFileBytes)
+                    expandedLength = (int)MaxConfigFileBytes;
+                if (expandedLength <= buffer.Length)
+                    throw new JsonException("JSON token exceeds the streaming buffer limit.");
+                Array.Resize(ref buffer, expandedLength);
+            }
         }
 
         if (!sawToken)
@@ -514,14 +525,15 @@ internal sealed class HotkeyCatalog
                             continue;
 
                         string fieldId = GetProperty<string>(reflection, option, "FieldId") ?? "";
+                        if (!string.IsNullOrWhiteSpace(fieldId))
+                            gmcmFields.Add(GetFieldKey(manifest.UniqueID, fieldId));
+
                         string action = GetOptionName(reflection, option, fieldId, warnings, manifest.Name);
                         object? value = GetProperty<object>(reflection, option, "Value");
                         string rawValue = value?.ToString() ?? "";
                         if (!TryParseBindings(rawValue, out List<HotkeyBinding> bindings))
                             continue;
 
-                        if (!string.IsNullOrWhiteSpace(fieldId))
-                            gmcmFields.Add(GetFieldKey(manifest.UniqueID, fieldId));
                         entries.Add(new HotkeyEntry(action, manifest.Name, manifest.UniqueID, HotkeySource.GenericModConfigMenu, bindings, fieldId));
                     }
                 }
@@ -695,7 +707,7 @@ internal sealed class HotkeyCatalog
         Dictionary<string, HotkeyEntry> result = new(TextComparer);
         foreach (HotkeyEntry entry in entries)
         {
-            string key = $"{entry.OwnerId}|{string.Join(',', entry.Bindings.Select(binding => binding.Normalized).OrderBy(value, TextComparer))}|{entry.Action}";
+            string key = $"{entry.OwnerId}|{string.Join(',', entry.Bindings.Select(binding => binding.Normalized).OrderBy(value => value, TextComparer))}|{entry.Action}";
             if (!result.TryGetValue(key, out HotkeyEntry? existing) || SourceRank(entry.Source) < SourceRank(existing.Source))
                 result[key] = entry;
         }
@@ -726,6 +738,7 @@ internal sealed class HotkeyCatalog
         IReadOnlyList<ModSnapshot> Mods,
         Dictionary<string, string> DirectoryIndex,
         Dictionary<string, ConfigFileCache> ConfigCache,
+        HashSet<string> GmcmFields,
         IReadOnlyList<string> Warnings,
         IReadOnlyList<string> DirectoryWarnings);
 

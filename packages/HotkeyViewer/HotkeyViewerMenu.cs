@@ -47,6 +47,12 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
         SyncCatalogResult();
     }
 
+    protected override void cleanupBeforeExit()
+    {
+        searchBox.Selected = false;
+        base.cleanupBeforeExit();
+    }
+
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
         if (upperRightCloseButton.containsPoint(x, y))
@@ -236,6 +242,7 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
     private void RebuildRenderCache()
     {
         renderCache.Clear();
+        float actionMaxWidth = GetRowsAreaBounds().Width - 44f - 660f;
         foreach (HotkeyEntry entry in catalogResult.Entries)
         {
             List<CachedBinding> bindings = entry.Bindings
@@ -247,7 +254,7 @@ internal sealed class HotkeyViewerMenu : IClickableMenu
                 })
                 .ToList();
             renderCache[entry] = new CachedEntryRender(
-                TruncateText(entry.Action, Game1.smallFont, width - 660f),
+                TruncateText(entry.Action, Game1.smallFont, actionMaxWidth),
                 TruncateText(entry.OwnerDisplay, Game1.smallFont, 222f),
                 bindings,
                 entry.Bindings.Count > 3 ? $"+{entry.Bindings.Count - 3}" : "");

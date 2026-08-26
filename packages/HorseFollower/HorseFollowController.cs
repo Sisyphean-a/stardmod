@@ -20,6 +20,7 @@ internal sealed class HorseFollowController : PathFindController
     private readonly Action<string> log;
     private readonly int initialWaypointCount;
     private bool menuPaused;
+    private bool wasMoving;
 
     internal HorseFollowController(
         Horse horse,
@@ -39,6 +40,7 @@ internal sealed class HorseFollowController : PathFindController
         this.animate = animate;
         this.maintainAnimation = maintainAnimation;
         this.log = log;
+        horse.stopWithoutChangingFrame();
         initialWaypointCount = pathToEndPoint?.Count ?? 0;
     }
 
@@ -56,6 +58,8 @@ internal sealed class HorseFollowController : PathFindController
             if (!menuPaused)
             {
                 menuPaused = true;
+                wasMoving = false;
+                horse.stopWithoutChangingFrame();
                 log("controller-pause reason=menu");
             }
         }
@@ -68,6 +72,7 @@ internal sealed class HorseFollowController : PathFindController
         bool withinStoppingDistance = ShouldStopForTargetDistance();
         if (!HasPath || withinStoppingDistance)
         {
+            wasMoving = false;
             horse.stopWithoutChangingFrame();
             log($"controller-stop reason={(HasPath ? "stopping-distance" : "path-empty")} distance={GetDistanceToTarget():0.0} path={GetPathCount()} position={FormatPosition(horse.Position)}");
             return true;
@@ -86,17 +91,22 @@ internal sealed class HorseFollowController : PathFindController
         if (!moved)
         {
             pausedTimer += time.ElapsedGameTime.Milliseconds;
-            horse.stopWithoutChangingFrame();
+            if (wasMoving)
+                horse.stopWithoutChangingFrame();
+            wasMoving = false;
         }
         else
         {
             pausedTimer = 0;
+            wasMoving = true;
             animate(horse, direction);
         }
 
         bool finished = !HasPath || IsStuck || ShouldStopForTargetDistance();
         if (finished)
         {
+            wasMoving = false;
+            horse.stopWithoutChangingFrame();
             string reason = !HasPath
                 ? "path-empty"
                 : IsStuck

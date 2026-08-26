@@ -106,11 +106,28 @@ internal sealed class NpcMapLocationsFeature
     private readonly Dictionary<string, BuildingMarker> buildingMarkers = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<NpcMarker> orderedNpcMarkers = new();
     private readonly Dictionary<long, FarmerMapPosition> farmerMapPositions = new();
+    private readonly Dictionary<string, NpcMapPositionCache> npcMapPositions = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<NPC> villagersBuffer = new();
+    private readonly HashSet<NPC> seenVillagers = new();
+    private readonly HashSet<string> questTargets = new(StringComparer.Ordinal);
+    private readonly HashSet<string> activeNpcNames = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<string> staleMarkerNames = new();
+    private readonly List<string> signatureNames = new();
+    private Dictionary<string, SyncedNpcMarker>? pendingSyncedMarkers;
+    private bool villagersDirty = true;
+    private bool cachedShowHorse;
+    private bool cachedShowChildren;
+    private bool cachedRidingHorse;
+    private Horse? cachedMount;
+    private readonly StringBuilder markerSignatureBuilder = new();
     private string? markerSignature;
     private NpcMapPage? mapPage;
     private NpcMapPage? minimapPage;
     private SpriteBatch? minimapSpriteBatch;
+    private SpriteBatch? minimapMapSpriteBatch;
     private RasterizerState? minimapRasterizer;
+    private RenderTarget2D? minimapMapTexture;
+    private NpcMapPage? minimapMapSourcePage;
     private MinimapLayoutKey? minimapLayoutKey;
     private bool minimapDragging;
     private Point minimapDragOffset;
@@ -130,12 +147,14 @@ internal sealed class NpcMapLocationsFeature
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         helper.Events.Player.Warped += OnWarped;
         helper.Events.World.BuildingListChanged += OnBuildingListChanged;
+        helper.Events.World.NpcListChanged += OnNpcListChanged;
         helper.Events.Input.ButtonsChanged += OnButtonsChanged;
         helper.Events.Input.ButtonPressed += OnButtonPressed;
         helper.Events.Input.ButtonReleased += OnButtonReleased;
         helper.Events.Display.RenderingHud += OnRenderingHud;
         helper.Events.Display.WindowResized += OnWindowResized;
         helper.Events.Multiplayer.ModMessageReceived += OnModMessageReceived;
+        helper.Events.Multiplayer.PeerConnected += OnPeerConnected;
     }
 
     internal void OnConfigChanged()
@@ -143,14 +162,57 @@ internal sealed class NpcMapLocationsFeature
         NormalizeConfig();
         mapPage = null;
         minimapPage = null;
+        InvalidateMinimapMapTexture();
         RestoreVanillaMapPage();
         UpdateMinimapVisibility();
         if (Context.IsWorldReady && getConfig().EnableNpcMapLocations)
         {
-            ResetMarkers();
             UpdateFarmBuildingLocations();
-            UpdateMarkers();
+            if (Context.IsMainPlayer)
+            {
+                ResetMarkers();
+                UpdateMarkers();
+            }
+            else
+            {
+                RefreshClientMarkers();
+            }
         }
+    }
+
+    private void RefreshClientMarkers()
+    {
+        foreach ((string name, NpcMarker marker) in npcMarkers)
+        {
+            NPC? npc = marker.Type == CharacterType.Special
+                ? null
+                : Game1.getCharacterFromName(name, false, false);
+            ApplyClientMarkerVisibility(name, marker, npc);
+        }
+
+        RebuildMarkerOrder();
+    }
+
+    private void ApplyClientMarkerVisibility(string name, NpcMarker marker, NPC? npc)
+    {
+        ModConfig config = getConfig();
+        if ((name == "Bookseller" && !config.ShowBookseller)
+            || (name == "Merchant" && !config.ShowTravelingMerchant)
+            || (marker.Type == CharacterType.Horse && !config.ShowHorse)
+            || (marker.Type == CharacterType.Child && !config.ShowChildren))
+        {
+            marker.IsHidden = true;
+            return;
+        }
+
+        if (marker.Type == CharacterType.Special)
+        {
+            marker.IsHidden = false;
+            return;
+        }
+
+        if (npc is not null)
+            marker.IsHidden = ShouldHide(npc, marker);
     }
 
     private void RestoreVanillaMapPage()
@@ -172,8 +234,11 @@ internal sealed class NpcMapLocationsFeature
     {
         NormalizeConfig();
         farmerMapPositions.Clear();
+        npcMapPositions.Clear();
+        pendingSyncedMarkers = null;
         mapPage = null;
         minimapPage = null;
+        InvalidateMinimapMapTexture();
         ResetMarkers();
         UpdateFarmBuildingLocations();
         UpdateMarkers();
@@ -185,9 +250,11 @@ internal sealed class NpcMapLocationsFeature
         if (!getConfig().EnableNpcMapLocations)
             return;
 
+        npcMapPositions.Clear();
         ResetMarkers();
         UpdateMarkers();
         minimapPage = null;
+        InvalidateMinimapMapTexture();
     }
 
     private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
@@ -196,11 +263,24 @@ internal sealed class NpcMapLocationsFeature
         buildingMarkers.Clear();
         orderedNpcMarkers.Clear();
         farmerMapPositions.Clear();
+        npcMapPositions.Clear();
+        villagersBuffer.Clear();
+        seenVillagers.Clear();
+        questTargets.Clear();
+        pendingSyncedMarkers = null;
+        activeNpcNames.Clear();
+        staleMarkerNames.Clear();
+        signatureNames.Clear();
+        villagersDirty = true;
+        cachedMount = null;
         mapPage = null;
         minimapPage = null;
         minimapDragging = false;
+        InvalidateMinimapMapTexture();
         minimapSpriteBatch?.Dispose();
         minimapSpriteBatch = null;
+        minimapMapSpriteBatch?.Dispose();
+        minimapMapSpriteBatch = null;
         minimapRasterizer?.Dispose();
         minimapRasterizer = null;
     }
@@ -211,8 +291,10 @@ internal sealed class NpcMapLocationsFeature
             return;
 
         farmerMapPositions.Clear();
+        npcMapPositions.Clear();
         UpdateMinimapVisibility(e.NewLocation);
         minimapPage = null;
+        InvalidateMinimapMapTexture();
         UpdateMarkers();
     }
 
@@ -220,6 +302,13 @@ internal sealed class NpcMapLocationsFeature
     {
         if (getConfig().EnableNpcMapLocations)
             UpdateFarmBuildingLocations();
+    }
+
+    private void OnNpcListChanged(object? sender, NpcListChangedEventArgs e)
+    {
+        villagersDirty = true;
+        if (!Context.IsMainPlayer && pendingSyncedMarkers is not null)
+            ApplySyncedMarkers();
     }
 
     private void OnButtonsChanged(object? sender, ButtonsChangedEventArgs e)
@@ -268,6 +357,7 @@ internal sealed class NpcMapLocationsFeature
     private void OnWindowResized(object? sender, WindowResizedEventArgs e)
     {
         minimapPage = null;
+        InvalidateMinimapMapTexture();
         if (Context.IsWorldReady)
             UpdateMinimapVisibility();
     }
@@ -303,6 +393,13 @@ internal sealed class NpcMapLocationsFeature
         {
             RestoreVanillaMapPage();
             return;
+        }
+
+        if (!Context.IsMainPlayer
+            && pendingSyncedMarkers is not null
+            && e.IsMultipleOf(Math.Max(1u, config.NpcCacheTicks)))
+        {
+            ApplySyncedMarkers();
         }
 
         if (e.IsMultipleOf(Math.Max(1u, config.NpcCacheTicks)))
@@ -341,6 +438,9 @@ internal sealed class NpcMapLocationsFeature
     {
         npcMarkers.Clear();
         orderedNpcMarkers.Clear();
+        npcMapPositions.Clear();
+        activeNpcNames.Clear();
+        villagersDirty = true;
         markerSignature = null;
         if (!Context.IsWorldReady)
             return;
@@ -355,6 +455,26 @@ internal sealed class NpcMapLocationsFeature
         foreach (NPC npc in GetVillagers())
             AddNpcMarker(npc);
         RebuildMarkerOrder();
+    }
+
+    private static NpcMarker? CreateSpecialMarker(string name)
+    {
+        return name switch
+        {
+            "Bookseller" => new NpcMarker(
+                "书摊老板",
+                Game1.mouseCursors_1_6,
+                new Rectangle(180, 490, 14, 18),
+                null,
+                CharacterType.Special),
+            "Merchant" => new NpcMarker(
+                "旅行商人",
+                Game1.mouseCursors,
+                new Rectangle(191, 1410, 22, 21),
+                null,
+                CharacterType.Special),
+            _ => null
+        };
     }
 
     private void AddSpecialMarkers()
@@ -428,8 +548,13 @@ internal sealed class NpcMapLocationsFeature
             ResetMarkers();
 
         HashSet<string> questTargets = GetQuestTargets();
+        activeNpcNames.Clear();
         foreach (NPC npc in GetVillagers())
         {
+            if (npc.SimpleNonVillagerNPC || IsIgnoredNpcType(npc))
+                continue;
+
+            activeNpcNames.Add(npc.Name);
             if (!npcMarkers.TryGetValue(npc.Name, out NpcMarker? marker))
             {
                 AddNpcMarker(npc);
@@ -441,12 +566,22 @@ internal sealed class NpcMapLocationsFeature
 
             marker.LocationName = npc.currentLocation.NameOrUniqueName;
             marker.IsOutdoors = npc.currentLocation.IsOutdoors;
-            marker.Position = GetWorldMapPosition(npc.currentLocation, npc.TilePoint);
+            marker.Position = GetCachedNpcMapPosition(npc);
             marker.IsBirthday = npc.isBirthday();
             marker.HasQuest = questTargets.Contains(npc.Name);
             marker.IsHidden = ShouldHide(npc, marker);
             marker.Layer = marker.IsBirthday || marker.HasQuest ? 5 : marker.IsOutdoors ? 6 : 2;
         }
+
+        staleMarkerNames.Clear();
+        foreach ((string name, NpcMarker marker) in npcMarkers)
+        {
+            if (marker.Type != CharacterType.Special && !activeNpcNames.Contains(name))
+                staleMarkerNames.Add(name);
+        }
+
+        foreach (string name in staleMarkerNames)
+            npcMarkers.Remove(name);
 
         string newSignature = GetMarkerSignature();
         if (string.Equals(markerSignature, newSignature, StringComparison.Ordinal))
@@ -463,7 +598,7 @@ internal sealed class NpcMapLocationsFeature
         orderedNpcMarkers.AddRange(npcMarkers.Values.OrderBy(marker => marker.Layer));
     }
 
-    private void SyncNpcMarkers()
+    private void SyncNpcMarkers(long? recipientPlayerId = null)
     {
         if (!Context.IsMultiplayer || !Context.IsMainPlayer)
             return;
@@ -491,30 +626,66 @@ internal sealed class NpcMapLocationsFeature
             syncedMarkers,
             SyncedNpcMarkersMessage,
             new[] { manifest.UniqueID },
-            null);
+            recipientPlayerId.HasValue ? new[] { recipientPlayerId.Value } : null);
     }
 
-    private void OnModMessageReceived(object? sender, ModMessageReceivedEventArgs e)
+    private void OnPeerConnected(object? sender, PeerConnectedEventArgs e)
     {
-        if (Context.IsMainPlayer
-            || e.FromModID != manifest.UniqueID
-            || e.FromPlayerID != Game1.MasterPlayer.UniqueMultiplayerID
-            || e.Type != SyncedNpcMarkersMessage)
+        if (!Context.IsWorldReady
+            || !Context.IsMainPlayer
+            || !getConfig().EnableNpcMapLocations)
         {
             return;
         }
 
-        Dictionary<string, SyncedNpcMarker> syncedMarkers = e.ReadAs<Dictionary<string, SyncedNpcMarker>>();
+        UpdateMarkers();
+        SyncNpcMarkers(e.Peer.PlayerID);
+    }
+
+    private void ApplySyncedMarkers()
+    {
+        Dictionary<string, SyncedNpcMarker>? syncedMarkers = pendingSyncedMarkers;
+        if (syncedMarkers is null)
+            return;
+
+        bool allMarkersResolved = true;
+        activeNpcNames.Clear();
+        foreach (string name in syncedMarkers.Keys)
+            activeNpcNames.Add(name);
+
+        staleMarkerNames.Clear();
+        foreach (string name in npcMarkers.Keys)
+        {
+            if (!activeNpcNames.Contains(name))
+                staleMarkerNames.Add(name);
+        }
+
+        foreach (string name in staleMarkerNames)
+            npcMarkers.Remove(name);
+
         foreach ((string name, SyncedNpcMarker synced) in syncedMarkers)
         {
             if (!npcMarkers.TryGetValue(name, out NpcMarker? marker))
             {
-                NPC? npc = Game1.getCharacterFromName(name, false, false);
-                if (npc is null)
-                    continue;
-
-                AddNpcMarker(npc);
-                npcMarkers.TryGetValue(name, out marker);
+                if (synced.Type == CharacterType.Special)
+                {
+                    marker = CreateSpecialMarker(name);
+                    if (marker is not null)
+                        npcMarkers[name] = marker;
+                }
+                else
+                {
+                    NPC? npc = Game1.getCharacterFromName(name, false, false);
+                    if (npc is not null)
+                    {
+                        AddNpcMarker(npc);
+                        npcMarkers.TryGetValue(name, out marker);
+                    }
+                    else
+                    {
+                        allMarkersResolved = false;
+                    }
+                }
             }
 
             if (marker is null)
@@ -529,19 +700,47 @@ internal sealed class NpcMapLocationsFeature
             marker.IsHidden = synced.IsHidden;
             marker.Layer = marker.IsBirthday || marker.HasQuest ? 5 : marker.IsOutdoors ? 6 : 2;
 
-            NPC? localNpc = Game1.getCharacterFromName(name, false, false);
-            if (localNpc is not null)
-                marker.IsHidden = ShouldHide(localNpc, marker);
+            NPC? localNpc = marker.Type == CharacterType.Special
+                ? null
+                : Game1.getCharacterFromName(name, false, false);
+            ApplyClientMarkerVisibility(name, marker, localNpc);
         }
 
+        if (allMarkersResolved)
+            pendingSyncedMarkers = null;
         RebuildMarkerOrder();
+    }
+
+    private void OnModMessageReceived(object? sender, ModMessageReceivedEventArgs e)
+    {
+        if (Context.IsMainPlayer
+            || e.FromModID != manifest.UniqueID
+            || e.FromPlayerID != Game1.MasterPlayer.UniqueMultiplayerID
+            || e.Type != SyncedNpcMarkersMessage)
+        {
+            return;
+        }
+
+        pendingSyncedMarkers = e.ReadAs<Dictionary<string, SyncedNpcMarker>>();
+        ApplySyncedMarkers();
     }
 
     private List<NPC> GetVillagers()
     {
         ModConfig config = getConfig();
-        List<NPC> villagers = new();
-        HashSet<NPC> seen = new();
+        bool ridingHorse = config.ShowHorse && Game1.player.isRidingHorse();
+        Horse? mount = ridingHorse ? Game1.player.mount : null;
+        if (!villagersDirty
+            && cachedShowHorse == config.ShowHorse
+            && cachedShowChildren == config.ShowChildren
+            && cachedRidingHorse == ridingHorse
+            && ReferenceEquals(cachedMount, mount))
+        {
+            return villagersBuffer;
+        }
+
+        villagersBuffer.Clear();
+        seenVillagers.Clear();
         Utility.ForEachCharacter(npc =>
         {
             if (npc is not null
@@ -550,23 +749,27 @@ internal sealed class NpcMapLocationsFeature
                     || npc.isMarried()
                     || (config.ShowHorse && npc is Horse)
                     || (config.ShowChildren && npc is Child))
-                && seen.Add(npc))
+                && seenVillagers.Add(npc))
             {
-                villagers.Add(npc);
+                villagersBuffer.Add(npc);
             }
 
             return true;
         }, false);
 
-        if (config.ShowHorse
-            && Game1.player.isRidingHorse()
-            && Game1.player.mount is not null
-            && seen.Add(Game1.player.mount))
+        if (ridingHorse
+            && mount is not null
+            && seenVillagers.Add(mount))
         {
-            villagers.Add(Game1.player.mount);
+            villagersBuffer.Add(mount);
         }
 
-        return villagers;
+        cachedShowHorse = config.ShowHorse;
+        cachedShowChildren = config.ShowChildren;
+        cachedRidingHorse = ridingHorse;
+        cachedMount = mount;
+        villagersDirty = false;
+        return villagersBuffer;
     }
 
     private bool ShouldHide(NPC npc, NpcMarker marker)
@@ -616,9 +819,9 @@ internal sealed class NpcMapLocationsFeature
         return firstRoot.NameOrUniqueName == secondRoot.NameOrUniqueName;
     }
 
-    private static HashSet<string> GetQuestTargets()
+    private HashSet<string> GetQuestTargets()
     {
-        HashSet<string> targets = new(StringComparer.Ordinal);
+        questTargets.Clear();
         foreach (Quest quest in Game1.player.questLog)
         {
             if (!quest.accepted.Value || !quest.dailyQuest.Value || quest.completed.Value)
@@ -633,18 +836,22 @@ internal sealed class NpcMapLocationsFeature
                 _ => null
             };
             if (!string.IsNullOrEmpty(target))
-                targets.Add(target);
+                questTargets.Add(target);
         }
 
-        return targets;
+        return questTargets;
     }
 
     private string GetMarkerSignature()
     {
-        StringBuilder signature = new();
-        foreach ((string name, NpcMarker marker) in npcMarkers.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+        markerSignatureBuilder.Clear();
+        signatureNames.Clear();
+        signatureNames.AddRange(npcMarkers.Keys);
+        signatureNames.Sort(StringComparer.OrdinalIgnoreCase);
+        foreach (string name in signatureNames)
         {
-            signature.Append(name).Append('\u001f')
+            NpcMarker marker = npcMarkers[name];
+            markerSignatureBuilder.Append(name).Append('\u001f')
                 .Append(marker.LocationName).Append('\u001f')
                 .Append(marker.IsOutdoors ? '1' : '0')
                 .Append(marker.Position?.RegionId).Append(':')
@@ -657,7 +864,7 @@ internal sealed class NpcMapLocationsFeature
                 .Append((int)marker.Type).Append(';');
         }
 
-        return signature.ToString();
+        return markerSignatureBuilder.ToString();
     }
 
     private void UpdateFarmBuildingLocations()
@@ -710,6 +917,22 @@ internal sealed class NpcMapLocationsFeature
         return position;
     }
 
+    private MapPosition? GetCachedNpcMapPosition(NPC npc)
+    {
+        GameLocation? location = npc.currentLocation;
+        Point tile = npc.TilePoint;
+        if (npcMapPositions.TryGetValue(npc.Name, out NpcMapPositionCache? cached)
+            && ReferenceEquals(cached.Location, location)
+            && cached.Tile == tile)
+        {
+            return cached.Position;
+        }
+
+        MapPosition? position = GetWorldMapPosition(location, tile);
+        npcMapPositions[npc.Name] = new NpcMapPositionCache(location, tile, position);
+        return position;
+    }
+
     private bool IsIgnoredNpcType(NPC npc)
     {
         return string.Equals(
@@ -741,6 +964,7 @@ internal sealed class NpcMapLocationsFeature
     private void UpdateMinimapVisibility(GameLocation? location = null)
     {
         minimapPage = null;
+        InvalidateMinimapMapTexture();
         if (location is not null && getConfig().MinimapExclusions.Contains(location.NameOrUniqueName))
             return;
     }
@@ -776,6 +1000,7 @@ internal sealed class NpcMapLocationsFeature
         if (playerPosition is null)
         {
             minimapPage = null;
+            InvalidateMinimapMapTexture();
             return;
         }
 
@@ -796,6 +1021,7 @@ internal sealed class NpcMapLocationsFeature
             || minimapPage.ViewportHeight != Game1.uiViewport.Height)
         {
             minimapPage = new NpcMapPage(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height, this);
+            InvalidateMinimapMapTexture();
         }
 
         minimapLayoutKey = layoutKey;
@@ -817,32 +1043,51 @@ internal sealed class NpcMapLocationsFeature
 
     private void DrawMinimap()
     {
-        if (minimapPage is null)
+        NpcMapPage? page = minimapPage;
+        if (page is null)
+            return;
+
+        GraphicsDevice graphicsDevice = ((GraphicsResource)Game1.spriteBatch).GraphicsDevice;
+        Rectangle previousScissor = graphicsDevice.ScissorRectangle;
+        EnsureMinimapMapTexture(graphicsDevice);
+        RenderTarget2D? mapTexture = minimapMapTexture;
+        if (mapTexture is null)
             return;
 
         Rectangle bounds = GetMinimapBounds();
-        GraphicsDevice graphicsDevice = ((GraphicsResource)Game1.spriteBatch).GraphicsDevice;
-        Rectangle previousScissor = graphicsDevice.ScissorRectangle;
+        SpriteBatch minimapBatch = minimapSpriteBatch ??= new SpriteBatch(graphicsDevice);
+        bool spriteBatchStarted = false;
         try
         {
             graphicsDevice.ScissorRectangle = bounds;
-            minimapSpriteBatch ??= new SpriteBatch(graphicsDevice);
             minimapRasterizer ??= new RasterizerState { ScissorTestEnable = true };
-            minimapSpriteBatch.Begin(
+            minimapBatch.Begin(
                 SpriteSortMode.Deferred,
                 BlendState.NonPremultiplied,
                 SamplerState.PointClamp,
                 null,
                 minimapRasterizer);
+            spriteBatchStarted = true;
             float opacity = MathHelper.Clamp(getConfig().MinimapOpacity, 0.05f, 1f);
-            minimapSpriteBatch.Draw(Game1.staminaRect, bounds, Color.Black * opacity);
-            minimapPage.drawMap(minimapSpriteBatch, false, opacity);
-            minimapPage.drawMiniPortraits(minimapSpriteBatch, opacity);
-            minimapSpriteBatch.End();
+            minimapBatch.Draw(Game1.staminaRect, bounds, Color.Black * opacity);
+            Rectangle mapBounds = page.MapBounds;
+            minimapBatch.Draw(
+                mapTexture,
+                new Rectangle(mapBounds.X, mapBounds.Y, mapBounds.Width * 4, mapBounds.Height * 4),
+                Color.White * opacity);
+            page.drawMiniPortraits(minimapBatch, opacity);
         }
         finally
         {
-            graphicsDevice.ScissorRectangle = previousScissor;
+            try
+            {
+                if (spriteBatchStarted)
+                    minimapBatch.End();
+            }
+            finally
+            {
+                graphicsDevice.ScissorRectangle = previousScissor;
+            }
         }
 
         Color border = IsMinimapDragZoneHovered() ? Color.White : Color.LightGray;
@@ -850,6 +1095,101 @@ internal sealed class NpcMapLocationsFeature
         Game1.spriteBatch.Draw(Game1.staminaRect, new Rectangle(bounds.X - 2, bounds.Bottom, bounds.Width + 4, 2), border * 0.75f);
         Game1.spriteBatch.Draw(Game1.staminaRect, new Rectangle(bounds.X - 2, bounds.Y, 2, bounds.Height), border * 0.75f);
         Game1.spriteBatch.Draw(Game1.staminaRect, new Rectangle(bounds.Right, bounds.Y, 2, bounds.Height), border * 0.75f);
+    }
+
+    private void EnsureMinimapMapTexture(GraphicsDevice graphicsDevice)
+    {
+        NpcMapPage? page = minimapPage;
+        if (page is null)
+            return;
+
+        Rectangle mapBounds = page.MapBounds;
+        int textureWidth = Math.Max(1, mapBounds.Width * 4);
+        int textureHeight = Math.Max(1, mapBounds.Height * 4);
+        if (minimapMapTexture is not null
+            && ReferenceEquals(minimapMapSourcePage, page)
+            && minimapMapTexture.Width == textureWidth
+            && minimapMapTexture.Height == textureHeight)
+        {
+            return;
+        }
+
+        InvalidateMinimapMapTexture();
+        RenderTarget2D? texture = null;
+        SpriteBatch? mapSpriteBatch = null;
+        RenderTargetBinding[]? previousTargets = null;
+        Viewport previousViewport = default;
+        Rectangle previousScissor = default;
+        Rectangle originalMapBounds = mapBounds;
+        bool stateCaptured = false;
+        bool spriteBatchStarted = false;
+        try
+        {
+            texture = new RenderTarget2D(
+                graphicsDevice,
+                textureWidth,
+                textureHeight,
+                false,
+                SurfaceFormat.Color,
+                DepthFormat.None);
+            mapSpriteBatch = minimapMapSpriteBatch ??= new SpriteBatch(graphicsDevice);
+            previousTargets = graphicsDevice.GetRenderTargets();
+            previousViewport = graphicsDevice.Viewport;
+            previousScissor = graphicsDevice.ScissorRectangle;
+            stateCaptured = true;
+
+            try
+            {
+                page.MapBounds = new Rectangle(0, 0, originalMapBounds.Width, originalMapBounds.Height);
+                graphicsDevice.SetRenderTarget(texture);
+                graphicsDevice.Clear(Color.Transparent);
+                mapSpriteBatch.Begin(
+                    SpriteSortMode.Deferred,
+                    BlendState.NonPremultiplied,
+                    SamplerState.PointClamp);
+                spriteBatchStarted = true;
+                page.drawMap(mapSpriteBatch, false, 1f);
+            }
+            finally
+            {
+                try
+                {
+                    if (spriteBatchStarted)
+                        mapSpriteBatch.End();
+                }
+                finally
+                {
+                    if (stateCaptured)
+                    {
+                        page.MapBounds = originalMapBounds;
+                        try
+                        {
+                            graphicsDevice.SetRenderTargets(previousTargets!);
+                        }
+                        finally
+                        {
+                            graphicsDevice.Viewport = previousViewport;
+                            graphicsDevice.ScissorRectangle = previousScissor;
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            texture?.Dispose();
+            throw;
+        }
+
+        minimapMapTexture = texture!;
+        minimapMapSourcePage = page;
+    }
+
+    private void InvalidateMinimapMapTexture()
+    {
+        minimapMapTexture?.Dispose();
+        minimapMapTexture = null;
+        minimapMapSourcePage = null;
     }
 
     private static bool IsMinimapDragButton(SButton button)
@@ -1019,6 +1359,7 @@ internal sealed class NpcMapLocationsFeature
     }
 
     private sealed record FarmerMapPosition(GameLocation? Location, Point Tile, MapPosition? Position);
+    private sealed record NpcMapPositionCache(GameLocation? Location, Point Tile, MapPosition? Position);
 
     private sealed class NpcMarker
     {

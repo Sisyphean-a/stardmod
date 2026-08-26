@@ -19,6 +19,7 @@ internal sealed class WindowsInputMethodFeature
     private IntPtr savedInputContext;
     private bool isInputMethodBlocked;
     private bool hasLoggedInputMethodReassociation;
+    private bool hasLoggedInputMethodError;
 
     internal WindowsInputMethodFeature(Func<bool> isEnabled, IMonitor monitor)
     {
@@ -28,18 +29,51 @@ internal sealed class WindowsInputMethodFeature
 
     public void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
-        if (!Context.IsWorldReady || !isEnabled() || IsTextInputActive())
+        try
         {
-            RestoreInputMethod();
-            return;
-        }
+            if (!Context.IsWorldReady || !isEnabled() || IsTextInputActive())
+            {
+                RestoreInputMethod();
+                hasLoggedInputMethodError = false;
+                return;
+            }
 
-        BlockInputMethod();
+            BlockInputMethod();
+            hasLoggedInputMethodError = false;
+        }
+        catch (Exception ex)
+        {
+            if (!hasLoggedInputMethodError)
+            {
+                monitor.Log($"输入法控制发生 Windows 原生错误，已暂时跳过本次处理：{ex.GetBaseException().Message}", LogLevel.Error);
+                hasLoggedInputMethodError = true;
+            }
+
+            try
+            {
+                RestoreInputMethod();
+            }
+            catch (Exception restoreException)
+            {
+                if (!hasLoggedInputMethodError)
+                {
+                    monitor.Log($"恢复输入法上下文失败：{restoreException.GetBaseException().Message}", LogLevel.Error);
+                    hasLoggedInputMethodError = true;
+                }
+            }
+        }
     }
 
     public void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
     {
-        RestoreInputMethod();
+        try
+        {
+            RestoreInputMethod();
+        }
+        catch (Exception ex)
+        {
+            monitor.Log($"恢复输入法上下文失败：{ex.GetBaseException().Message}", LogLevel.Error);
+        }
     }
 
     private static bool IsTextInputActive()
@@ -55,9 +89,17 @@ internal sealed class WindowsInputMethodFeature
             IntPtr currentSdlWindow = Game1.game1.Window.Handle;
             if (currentSdlWindow == sdlWindow)
             {
-                if (!CancelTextComposition(gameWindow))
+                // ImmAssociateContext returns the context that was active before this call.
+                // A zero result means the context is already blocked, so avoid the much more
+                // expensive composition query on every game tick.
+                IntPtr reassociatedContext = ImmAssociateContext(gameWindow, IntPtr.Zero);
+                if (reassociatedContext == IntPtr.Zero)
                     return;
 
+                // Restore the context briefly so composition/candidate state can be cancelled
+                // before blocking it again. This path runs only after another component reattached IME.
+                ImmAssociateContext(gameWindow, reassociatedContext);
+                CancelTextComposition(gameWindow);
                 ImmAssociateContext(gameWindow, IntPtr.Zero);
                 if (!hasLoggedInputMethodReassociation)
                 {

@@ -60,7 +60,13 @@ internal sealed record HotkeyEntry(
 
     internal string OwnerDisplay { get; } = Source == HotkeySource.Game ? "原版设置" : OwnerName;
     internal string BindingText { get; } = string.Join(", ", Bindings.Select(binding => binding.Display));
-    internal string SearchText { get; } = string.Join("\n", BindingText, Action, OwnerName, OwnerId, Detail);
+    internal string SearchText { get; } = string.Join(
+        "\n",
+        string.Join(", ", Bindings.Select(binding => binding.Display)),
+        Action,
+        OwnerName,
+        OwnerId,
+        Detail);
 }
 
 internal sealed record HotkeyCatalogResult(

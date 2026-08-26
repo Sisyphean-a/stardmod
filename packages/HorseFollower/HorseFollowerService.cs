@@ -450,7 +450,7 @@ internal sealed class HorseFollowerService
             completedRequest.StoppingDistancePixels,
             horseAnimator.Animate,
             horseAnimator.Maintain,
-            LogFollow,
+            message => LogFollow(() => message),
             completedSearch.Path);
         LogFollow(
             () => $"controller-created target=({completedRequest.TargetTile.X},{completedRequest.TargetTile.Y}) "
@@ -602,12 +602,6 @@ internal sealed class HorseFollowerService
 
     private bool IsVerbose => monitor.IsVerbose;
 
-    private void LogFollow(string message)
-    {
-        if (IsVerbose)
-            monitor.Log($"[HorseFollower] {message}", LogLevel.Trace);
-    }
-
     private void LogFollow(Func<string> messageFactory)
     {
         if (IsVerbose)
@@ -617,7 +611,7 @@ internal sealed class HorseFollowerService
     private void LogTrace(Func<string> messageFactory)
     {
         if (IsVerbose)
-            monitor.Log(messageFactory(), LogLevel.Trace);
+            monitor.Log($"[HorseFollower] {messageFactory()}", LogLevel.Trace);
     }
 
     private void CancelPathSearch()

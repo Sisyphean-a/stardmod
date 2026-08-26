@@ -3,6 +3,7 @@ using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
+using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.Inventories;
 using StardewValley.ItemTypeDefinitions;
@@ -15,9 +16,12 @@ internal static class QuickStackFeature
 {
     private const string ButtonHoverText = "快速堆叠到附近箱子";
     private static readonly ConditionalWeakTable<InventoryPage, ClickableTextureComponent> Buttons = new();
+    private static readonly List<Chest> indexedChests = new();
+    private static readonly List<Chest> nearbyChests = new();
     private static Func<ModConfig> getConfig = null!;
     private static IMonitor monitor = null!;
     private static Texture2D icon = null!;
+    private static GameLocation? indexedLocation;
 
     internal static bool IsAvailable { get; private set; }
 
@@ -26,6 +30,10 @@ internal static class QuickStackFeature
         QuickStackFeature.getConfig = getConfig;
         QuickStackFeature.monitor = monitor;
         icon = helper.ModContent.Load<Texture2D>("assets/quickStackIcon.png");
+        helper.Events.World.ObjectListChanged += OnObjectListChanged;
+        helper.Events.Player.Warped += OnWarped;
+        helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
+        helper.Events.GameLoop.ReturnedToTitle += OnReturnedToTitle;
         IsAvailable = true;
     }
 
@@ -148,12 +156,7 @@ internal static class QuickStackFeature
 
         int range = Math.Clamp(getConfig().QuickStackRange, 1, 64);
         Point origin = player.TilePoint;
-        List<Chest> chests = location.Objects.Values
-            .OfType<Chest>()
-            .Where(IsSupportedChest)
-            .Where(chest => IsWithinRange(origin, chest.TileLocation, range))
-            .OrderBy(chest => DistanceSquared(origin, chest.TileLocation))
-            .ToList();
+        List<Chest> chests = GetNearbyChests(location, origin, range);
 
         QuickStackItemAnimation animation = new(player, location);
         bool movedAny = false;
@@ -226,6 +229,77 @@ internal static class QuickStackFeature
         }
 
         return movedAny;
+    }
+
+    private static List<Chest> GetNearbyChests(GameLocation location, Point origin, int range)
+    {
+        EnsureChestIndex(location);
+        nearbyChests.Clear();
+        foreach (Chest chest in indexedChests)
+        {
+            if (IsSupportedChest(chest) && IsWithinRange(origin, chest.TileLocation, range))
+                nearbyChests.Add(chest);
+        }
+
+        nearbyChests.Sort((first, second) =>
+            DistanceSquared(origin, first.TileLocation).CompareTo(DistanceSquared(origin, second.TileLocation)));
+        return nearbyChests;
+    }
+
+    private static void EnsureChestIndex(GameLocation location)
+    {
+        if (ReferenceEquals(indexedLocation, location))
+            return;
+
+        indexedChests.Clear();
+        foreach (StardewValley.Object obj in location.Objects.Values)
+        {
+            if (obj is Chest chest && IsSupportedChest(chest))
+                indexedChests.Add(chest);
+        }
+
+        indexedLocation = location;
+    }
+
+    private static void OnObjectListChanged(object? sender, ObjectListChangedEventArgs e)
+    {
+        if (!ReferenceEquals(indexedLocation, e.Location))
+            return;
+
+        foreach (KeyValuePair<Vector2, StardewValley.Object> removed in e.Removed)
+        {
+            if (removed.Value is Chest chest)
+                indexedChests.Remove(chest);
+        }
+
+        foreach (KeyValuePair<Vector2, StardewValley.Object> added in e.Added)
+        {
+            if (added.Value is Chest chest && IsSupportedChest(chest) && !indexedChests.Contains(chest))
+                indexedChests.Add(chest);
+        }
+    }
+
+    private static void OnWarped(object? sender, WarpedEventArgs e)
+    {
+        if (e.IsLocalPlayer)
+        {
+            indexedChests.Clear();
+            indexedLocation = null;
+        }
+    }
+
+    private static void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
+    {
+        indexedChests.Clear();
+        nearbyChests.Clear();
+        indexedLocation = null;
+    }
+
+    private static void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
+    {
+        indexedChests.Clear();
+        nearbyChests.Clear();
+        indexedLocation = null;
     }
 
     private static bool IsSupportedChest(Chest chest)

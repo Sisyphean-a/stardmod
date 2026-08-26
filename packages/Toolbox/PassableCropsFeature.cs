@@ -255,7 +255,10 @@ internal static class PassableCropsFeature
     private static void BushGetBoundingBoxPostfix(ref Rectangle __result)
     {
         if (drawState.Type == DrawObjectType.Terrain)
+        {
+            drawState = default;
             __result.Y -= 46;
+        }
     }
 
     private static void TreeGetBoundingBoxPostfix(Tree __instance, ref Rectangle __result)
@@ -263,6 +266,7 @@ internal static class PassableCropsFeature
         if (drawState.Type != DrawObjectType.Terrain)
             return;
 
+        drawState = default;
         int offset = __instance.growthStage.Value switch
         {
             0 or 1 => -46,
@@ -277,6 +281,7 @@ internal static class PassableCropsFeature
         if (drawState.Type != DrawObjectType.Terrain)
             return;
 
+        drawState = default;
         int offset = __instance.growthStage.Value switch
         {
             0 or 1 => -46,
@@ -411,7 +416,7 @@ internal static class PassableCropsFeature
 
     private static void ApplyRectangleDrawState(ref Rectangle destinationRectangle, ref float rotation, ref Vector2 origin)
     {
-        if (drawState.Type == DrawObjectType.None)
+        if (drawState.Type is DrawObjectType.None or DrawObjectType.Terrain)
             return;
 
         if (currentConfig.ShakeWhenPassing)
@@ -427,7 +432,7 @@ internal static class PassableCropsFeature
 
     private static void ApplyVectorDrawState(ref Vector2 position, ref float rotation, ref Vector2 origin, ref float layerDepth)
     {
-        if (drawState.Type == DrawObjectType.None)
+        if (drawState.Type is DrawObjectType.None or DrawObjectType.Terrain)
             return;
 
         if (currentConfig.ShakeWhenPassing)
@@ -511,6 +516,9 @@ internal static class PassableCropsFeature
     {
         PrepareShakeState();
         if (!shakeStateEnabled || item.Location != Game1.currentLocation)
+            return;
+
+        if (shakeStates.ContainsKey(item))
             return;
 
         float maxShake = type is PassableObjectType.Scarecrow or PassableObjectType.Sprinkler
