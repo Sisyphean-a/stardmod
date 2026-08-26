@@ -11,6 +11,7 @@ scope: workspace
 - [context:toolbox](contexts/toolbox.md)：工具箱内轻量游戏便利功能。代码位置：`packages/Toolbox`。
 - [context:horse-follower](contexts/horse-follower.md)：玩家下马后的马匹跟随生命周期。代码位置：`packages/HorseFollower`。
 - [context:hotkey-viewer](contexts/hotkey-viewer.md)：游戏本体与已加载模组快捷键查看和潜在冲突排查。代码位置：`packages/HotkeyViewer`。
+- [context:portable-loading-optimizer](contexts/portable-loading-optimizer.md)：不接管存档所有权的跨平台加载优化与平台分流。代码位置：`packages/PortableLoadingOptimizer`。
 
 ## 通用语言
 

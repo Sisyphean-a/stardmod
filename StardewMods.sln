@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HorseFollower", "packages\H
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HotkeyViewer", "packages\HotkeyViewer\HotkeyViewer.csproj", "{F4674940-8D2B-45EE-91A2-A3D974044D00}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PortableLoadingOptimizer", "packages\PortableLoadingOptimizer\PortableLoadingOptimizer.csproj", "{8B4FF0CC-7AAF-409D-8763-A04B90166DDA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -26,6 +28,10 @@ Global
 		{F4674940-8D2B-45EE-91A2-A3D974044D00}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F4674940-8D2B-45EE-91A2-A3D974044D00}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F4674940-8D2B-45EE-91A2-A3D974044D00}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8B4FF0CC-7AAF-409D-8763-A04B90166DDA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8B4FF0CC-7AAF-409D-8763-A04B90166DDA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8B4FF0CC-7AAF-409D-8763-A04B90166DDA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8B4FF0CC-7AAF-409D-8763-A04B90166DDA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

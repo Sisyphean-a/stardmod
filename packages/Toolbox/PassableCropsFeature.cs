@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Reflection.Emit;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -321,7 +322,11 @@ internal static class PassableCropsFeature
             {
                 MethodInfo? replacement = GetLocalDrawMethod(method);
                 if (replacement is not null)
+                {
+                    // Rule: 实例 Draw 使用 callvirt，改调静态包装方法时必须同步改为 call。
+                    instruction.opcode = OpCodes.Call;
                     instruction.operand = replacement;
+                }
             }
 
             yield return instruction;

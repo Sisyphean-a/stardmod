@@ -1,0 +1,16 @@
+{
+  "Name": "跨平台加载优化器",
+  "Author": "xixifu",
+  "Version": "1.0.0",
+  "Description": "面向 Windows 与 Android SMAPI 的保守加载优化：移除选档固定等待，并执行有上限的后台文件预读。",
+  "UniqueID": "xixifu.PortableLoadingOptimizer",
+  "EntryDll": "PortableLoadingOptimizer.dll",
+  "MinimumApiVersion": "4.0.0",
+  "Dependencies": [
+    {
+      "UniqueID": "neoiw.StardewLoadingOptimizer",
+      "IsRequired": false
+    }
+  ],
+  "UpdateKeys": []
+}

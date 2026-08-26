@@ -15,6 +15,7 @@ namespace Toolbox;
 internal sealed class LadderLocatorFeature
 {
     private const int RevealAfterBrokenStones = 10;
+    private const int GuaranteedLadderAfterBrokenStones = RevealAfterBrokenStones + 1;
     private static readonly Color[] RainbowPalette =
     {
         Color.Red,
@@ -67,25 +68,69 @@ internal sealed class LadderLocatorFeature
 
     private void OnObjectListChanged(object? sender, ObjectListChangedEventArgs e)
     {
-        if (!e.IsCurrentLocation
-            || e.Location is not MineShaft mine
-            || !ReferenceEquals(trackedLocation, e.Location))
-        {
+        if (!e.IsCurrentLocation || e.Location is not MineShaft mine)
             return;
-        }
+
+        // 规则：SMAPI 已提供当前地点语义判断；其他模组替换地点实例时仍保留本层计数。
+        if (trackedLocation is not MineShaft trackedMine || trackedMine.mineLevel != mine.mineLevel)
+            Reset(mine);
+        else
+            trackedLocation = mine;
 
         objectListVersion++;
+        Vector2? guaranteedLadderTile = null;
+        int removedStones = 0;
+        foreach (KeyValuePair<Vector2, StardewValley.Object> removed in e.Removed)
+        {
+            if (!IsStone(removed.Value))
+                continue;
+
+            removedStones++;
+            brokenStoneCount++;
+            monitor.Log(
+                $"梯子定位：矿层 {mine.mineLevel} 第 {brokenStoneCount} 块石头已砸碎，坐标=({removed.Key.X},{removed.Key.Y})。",
+                LogLevel.Info);
+
+            if (brokenStoneCount == GuaranteedLadderAfterBrokenStones)
+                guaranteedLadderTile = removed.Key;
+        }
+
+        if (removedStones <= 0)
+            return;
+
         if (mine.ladderHasSpawned)
         {
             ClearMarkers();
             return;
         }
 
-        int removedStones = e.Removed.Count(IsStone);
-        if (removedStones <= 0)
-            return;
+        if (guaranteedLadderTile is Vector2 tile)
+        {
+            bool canCreateLadder = mine.shouldCreateLadderOnThisLevel();
+            if (canCreateLadder && Game1.IsMasterGame)
+            {
+                mine.createLadderDown((int)tile.X, (int)tile.Y);
+                monitor.Log(
+                    $"梯子定位：矿层 {mine.mineLevel} 已达到第 {GuaranteedLadderAfterBrokenStones} 块石头，已安排必出的楼梯。",
+                    LogLevel.Info);
+                ClearMarkers();
+                return;
+            }
 
-        brokenStoneCount += removedStones;
+            if (!canCreateLadder)
+            {
+                monitor.Log(
+                    $"梯子定位：矿层 {mine.mineLevel} 不允许生成下一层楼梯，未执行第 {GuaranteedLadderAfterBrokenStones} 块石头保证。",
+                    LogLevel.Warn);
+            }
+            else
+            {
+                monitor.Log(
+                    $"梯子定位：矿层 {mine.mineLevel} 的第 {GuaranteedLadderAfterBrokenStones} 块石头由非主机处理，等待主机生成楼梯。",
+                    LogLevel.Trace);
+            }
+        }
+
         if (brokenStoneCount < RevealAfterBrokenStones)
         {
             ClearMarkers();
@@ -97,13 +142,16 @@ internal sealed class LadderLocatorFeature
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
-        if (!e.IsMultipleOf(5)
-            || trackedLocation is not MineShaft mine
-            || !ReferenceEquals(Game1.currentLocation, trackedLocation))
+        if (!e.IsMultipleOf(5) || Game1.currentLocation is not MineShaft mine)
+            return;
+
+        if (!IsTrackedMine(mine))
         {
+            Reset(mine);
             return;
         }
 
+        trackedLocation = mine;
         if (mine.ladderHasSpawned)
         {
             ClearMarkers();
@@ -172,8 +220,7 @@ internal sealed class LadderLocatorFeature
         if (!Context.IsWorldReady
             || !revealActive
             || ladderMarkers.Count == 0
-            || trackedLocation is not MineShaft
-            || !ReferenceEquals(Game1.currentLocation, trackedLocation))
+            || !IsCurrentTrackedMine())
         {
             return;
         }
@@ -260,6 +307,16 @@ internal sealed class LadderLocatorFeature
             mine.ladderHasSpawned,
             mine.mustKillAllMonstersToAdvance(),
             mine.shouldCreateLadderOnThisLevel());
+    }
+
+    private bool IsTrackedMine(MineShaft mine)
+    {
+        return trackedLocation is MineShaft trackedMine && trackedMine.mineLevel == mine.mineLevel;
+    }
+
+    private bool IsCurrentTrackedMine()
+    {
+        return Game1.currentLocation is MineShaft mine && IsTrackedMine(mine);
     }
 
     private void Reset(GameLocation? location)

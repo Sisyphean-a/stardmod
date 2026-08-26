@@ -1,0 +1,28 @@
+{
+  "RemoveSaveSelectionDelay": true,
+  "EnableBackgroundFilePrefetch": true,
+  "PrefetchStartDelaySeconds": 2,
+  "PrefetchMegabytesPerSecond": 24,
+  "PrefetchMaximumMegabytes": 256,
+  "AndroidPrefetchMegabytesPerSecond": 8,
+  "AndroidPrefetchMaximumMegabytes": 96,
+  "PrefetchRecentSaveFiles": true,
+  "RecentSaveCount": 2,
+  "PrefetchExtensions": [
+    ".tmx",
+    ".tbin",
+    ".png",
+    ".json"
+  ],
+  "ExcludedDirectoryNames": [
+    ".git",
+    "Backups",
+    "Backup",
+    "cache",
+    "bin",
+    "obj"
+  ],
+  "EnableFastWarpTransitions": true,
+  "EnableFastWarpTransitionsInMultiplayer": false,
+  "FastWarpTransitionMultiplier": 6.5
+}

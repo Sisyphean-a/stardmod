@@ -1,0 +1,9 @@
+Portable Loading Optimizer
+Copyright (C) 2026 xixifu
+
+This mod is an independent GPL-3.0-only derivative informed by Stardew Loading
+Optimizer by neoiw. It reimplements the portable save-slot delay, bounded file
+prefetch, and guarded fast-warp ideas under a distinct runtime identity.
+
+Stardew Valley, SMAPI, MonoGame, Harmony, and their assemblies are not included
+and remain subject to their respective licenses.
