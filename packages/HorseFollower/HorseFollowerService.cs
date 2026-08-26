@@ -15,6 +15,8 @@ internal sealed class HorseFollowerService
     private const int FailedPathRetryCooldownTicks = 120;
     private const float CatchUpNormalSpeedDistanceTiles = 7f;
     private const float CatchUpFastSpeedDistanceTiles = 10f;
+    private const float CatchUpNormalSpeedDistanceSquared = CatchUpNormalSpeedDistanceTiles * CatchUpNormalSpeedDistanceTiles * 4096f;
+    private const float CatchUpFastSpeedDistanceSquared = CatchUpFastSpeedDistanceTiles * CatchUpFastSpeedDistanceTiles * 4096f;
 
     private readonly ModConfig config;
     private readonly IMonitor monitor;
@@ -40,6 +42,7 @@ internal sealed class HorseFollowerService
     private int originalHorseSpeed;
     private float originalHorseAddedSpeed;
     private bool hasOriginalHorseSpeed;
+    private bool wasExternallyControlled;
 
     internal HorseFollowerService(ModConfig config, IMonitor monitor)
     {
@@ -162,15 +165,16 @@ internal sealed class HorseFollowerService
             outdoorWarpTracker.ClearTransitions();
 
         float distanceSquared = GetDistanceSquared(horse, Game1.player);
-        float distance = MathF.Sqrt(distanceSquared);
         float stopDistance = config.FollowDistance * 64f;
         float startDistance = config.FollowStartDistance * 64f;
-        if (distanceSquared <= stopDistance * stopDistance)
+        float stopDistanceSquared = stopDistance * stopDistance;
+        float startDistanceSquared = startDistance * startDistance;
+        if (distanceSquared <= stopDistanceSquared)
         {
             RestoreOriginalHorseSpeed();
             if (followController is not null || pathSearch is not null)
             {
-                LogFollow($"service-stop reason=stopping-distance distance={distance:0.0}");
+                LogFollow(() => $"service-stop reason=stopping-distance distance={MathF.Sqrt(distanceSquared):0.0}");
                 StopFollowController();
             }
             return;
@@ -180,14 +184,23 @@ internal sealed class HorseFollowerService
         bool controllerAttached = followController is not null && ReferenceEquals(horse.controller, followController);
         if (horse.controller is not null && !controllerAttached)
         {
+            if (!wasExternallyControlled)
+                LogFollow(() => "service-pause reason=external-controller");
+            wasExternallyControlled = true;
             RestoreOriginalHorseSpeed();
             CancelPathSearch();
             return;
         }
 
-        ApplyFollowSpeed(horse, distance);
+        if (wasExternallyControlled && horse.controller is null)
+        {
+            wasExternallyControlled = false;
+            LogFollow(() => "service-resume reason=external-controller-ended");
+        }
 
-        if (followController is null && distanceSquared <= startDistance * startDistance)
+        ApplyFollowSpeed(horse, distanceSquared);
+
+        if (followController is null && distanceSquared <= startDistanceSquared)
         {
             CancelPathSearch();
             return;
@@ -224,8 +237,8 @@ internal sealed class HorseFollowerService
         if (shouldReplan)
         {
             LogFollow(
-                $"replan-request reason={(controllerAttached ? "owned-controller" : followController is null ? "no-controller" : !followController.HasPath ? "path-empty" : followController.IsStuck ? "stuck" : "target-changed")} "
-                + $"target=({targetTile.X},{targetTile.Y}) ticksSincePlan={ticksSincePlan}");
+                () => $"replan-request reason={(controllerAttached ? "owned-controller" : followController is null ? "no-controller" : !followController.HasPath ? "path-empty" : followController.IsStuck ? "stuck" : "target-changed")} "
+                    + $"target=({targetTile.X},{targetTile.Y}) ticksSincePlan={ticksSincePlan}");
             BeginFollowPathSearch(horse, targetTile, stopDistance);
         }
 
@@ -248,9 +261,8 @@ internal sealed class HorseFollowerService
             if (!OutdoorWarpTracker.IsSameLocation(horse.currentLocation, transition.TargetLocation))
                 return;
 
-            monitor.Log(
-                $"Horse arrived in {transition.TargetLocation.NameOrUniqueName}; completed outdoor transition.",
-                LogLevel.Trace);
+            LogTrace(
+                () => $"Horse arrived in {transition.TargetLocation.NameOrUniqueName}; completed outdoor transition.");
             outdoorWarpTracker.CompleteCurrentTransition();
             ClearPathFailure();
             ticksSincePlan = RetryIntervalTicks;
@@ -271,9 +283,8 @@ internal sealed class HorseFollowerService
         if (horse.TilePoint == transition.SourceExitTile
             || distanceSquared <= exitArrivalDistance * exitArrivalDistance)
         {
-            monitor.Log(
-                $"Horse reached outdoor exit {transition.SourceLocation.NameOrUniqueName} ({transition.SourceExitTile.X}, {transition.SourceExitTile.Y}); crossing to {transition.TargetLocation.NameOrUniqueName}.",
-                LogLevel.Trace);
+            LogTrace(
+                () => $"Horse reached outdoor exit {transition.SourceLocation.NameOrUniqueName} ({transition.SourceExitTile.X}, {transition.SourceExitTile.Y}); crossing to {transition.TargetLocation.NameOrUniqueName}.");
             CompleteOutdoorTransition(horse, transition);
             return;
         }
@@ -282,9 +293,18 @@ internal sealed class HorseFollowerService
             && ReferenceEquals(horse.controller, followController);
         if (horse.controller is not null && !controllerAttached)
         {
+            if (!wasExternallyControlled)
+                LogFollow(() => "service-pause reason=external-controller");
+            wasExternallyControlled = true;
             RestoreOriginalHorseSpeed();
             CancelPathSearch();
             return;
+        }
+
+        if (wasExternallyControlled && horse.controller is null)
+        {
+            wasExternallyControlled = false;
+            LogFollow(() => "service-resume reason=external-controller-ended");
         }
 
         if (AdvancePathSearch(horse, transition.SourceLocation, transition.SourceExitTile))
@@ -320,7 +340,7 @@ internal sealed class HorseFollowerService
                 targetTile,
                 Game1.player.getStandingPosition(),
                 stopDistance,
-                $"player target ({targetTile.X}, {targetTile.Y})"));
+                () => $"player target ({targetTile.X}, {targetTile.Y})"));
     }
 
     private void BeginOutdoorPathSearch(
@@ -336,7 +356,7 @@ internal sealed class HorseFollowerService
                 transition.SourceExitTile,
                 exitPosition,
                 exitArrivalDistance,
-                $"outdoor exit {transition.SourceLocation.NameOrUniqueName} ({transition.SourceExitTile.X}, {transition.SourceExitTile.Y})"));
+                () => $"outdoor exit {transition.SourceLocation.NameOrUniqueName} ({transition.SourceExitTile.X}, {transition.SourceExitTile.Y})"));
     }
 
     private void BeginPathSearch(Horse horse, PathRequest request)
@@ -359,8 +379,8 @@ internal sealed class HorseFollowerService
         }
 
         LogFollow(
-            $"path-search-start target=({request.TargetTile.X},{request.TargetTile.Y}) "
-            + $"stopping={request.StoppingDistancePixels:0.0} preserveController={controllerAttached}");
+            () => $"path-search-start target=({request.TargetTile.X},{request.TargetTile.Y}) "
+                + $"stopping={request.StoppingDistancePixels:0.0} preserveController={controllerAttached}");
         pathRequest = request;
         pathSearch = new HorsePathSearch(
             horse,
@@ -392,22 +412,30 @@ internal sealed class HorseFollowerService
         CancelPathSearch();
         if (horse.TilePoint != completedSearch.StartTile)
         {
+            if (completedSearch.Path is null
+                || !completedSearch.TryReuseFrom(horse, out int trimmedWaypoints))
+            {
+                LogFollow(
+                    () => $"path-search-discard reason=stale-start searchedStart=({completedSearch.StartTile.X},{completedSearch.StartTile.Y}) "
+                        + $"current=({horse.TilePoint.X},{horse.TilePoint.Y})");
+                BeginPathSearch(horse, completedRequest);
+                return true;
+            }
+
             LogFollow(
-                $"path-search-discard reason=stale-start searchedStart=({completedSearch.StartTile.X},{completedSearch.StartTile.Y}) "
-                + $"current=({horse.TilePoint.X},{horse.TilePoint.Y})");
-            BeginPathSearch(horse, completedRequest);
-            return true;
+                () => $"path-search-reuse searchedStart=({completedSearch.StartTile.X},{completedSearch.StartTile.Y}) "
+                    + $"current=({horse.TilePoint.X},{horse.TilePoint.Y}) trimmed={trimmedWaypoints} "
+                    + $"remaining={completedSearch.Path.Count}");
         }
 
         if (completedSearch.Path is null)
         {
             RecordPathFailure(horse, completedRequest.Location, completedRequest.TargetTile);
             LogFollow(
-                $"path-search-failed target=({completedRequest.TargetTile.X},{completedRequest.TargetTile.Y}) "
-                + $"searched={completedSearch.SearchedNodeCount}");
-            monitor.Log(
-                $"Horse could not find {completedRequest.Description} after {completedSearch.SearchedNodeCount} nodes; it will retry after the failure cooldown or when the horse or target changes.",
-                LogLevel.Trace);
+                () => $"path-search-failed target=({completedRequest.TargetTile.X},{completedRequest.TargetTile.Y}) "
+                    + $"searched={completedSearch.SearchedNodeCount}");
+            LogTrace(
+                () => $"Horse could not find {completedRequest.Description()} after {completedSearch.SearchedNodeCount} nodes; it will retry after the failure cooldown or when the horse or target changes.");
             horse.stopWithoutChangingFrame();
             SetHorseIdle(horse);
             return true;
@@ -425,8 +453,8 @@ internal sealed class HorseFollowerService
             LogFollow,
             completedSearch.Path);
         LogFollow(
-            $"controller-created target=({completedRequest.TargetTile.X},{completedRequest.TargetTile.Y}) "
-            + $"path={completedSearch.Path.Count}");
+            () => $"controller-created target=({completedRequest.TargetTile.X},{completedRequest.TargetTile.Y}) "
+                + $"path={completedSearch.Path.Count}");
         horse.controller = followController;
         return true;
     }
@@ -437,9 +465,8 @@ internal sealed class HorseFollowerService
         ClearPathFailure();
         Point destinationTile = FindOpenDestinationTile(horse, transition);
         transition.TransferRequested = true;
-        monitor.Log(
-            $"Warping horse from {transition.SourceLocation.NameOrUniqueName} to {transition.TargetLocation.NameOrUniqueName} ({destinationTile.X}, {destinationTile.Y}).",
-            LogLevel.Trace);
+        LogTrace(
+            () => $"Warping horse from {transition.SourceLocation.NameOrUniqueName} to {transition.TargetLocation.NameOrUniqueName} ({destinationTile.X}, {destinationTile.Y}).");
         Game1.warpCharacter(horse, transition.TargetLocation, destinationTile.ToVector2());
         if (OutdoorWarpTracker.IsSameLocation(horse.currentLocation, transition.TargetLocation))
         {
@@ -475,12 +502,11 @@ internal sealed class HorseFollowerService
         hasPlannedTarget = false;
     }
 
-    private void ApplyFollowSpeed(Horse horse, float distancePixels)
+    private void ApplyFollowSpeed(Horse horse, float distanceSquared)
     {
-        float distanceTiles = distancePixels / 64f;
-        float catchUpSpeed = distanceTiles >= CatchUpFastSpeedDistanceTiles
+        float catchUpSpeed = distanceSquared >= CatchUpFastSpeedDistanceSquared
             ? 2f
-            : distanceTiles > CatchUpNormalSpeedDistanceTiles
+            : distanceSquared > CatchUpNormalSpeedDistanceSquared
                 ? 1f
                 : 0f;
         SetFollowSpeed(horse, catchUpSpeed);
@@ -574,9 +600,24 @@ internal sealed class HorseFollowerService
         failedPath = null;
     }
 
+    private bool IsVerbose => monitor.IsVerbose;
+
     private void LogFollow(string message)
     {
-        monitor.Log($"[HorseFollower] {message}", LogLevel.Trace);
+        if (IsVerbose)
+            monitor.Log($"[HorseFollower] {message}", LogLevel.Trace);
+    }
+
+    private void LogFollow(Func<string> messageFactory)
+    {
+        if (IsVerbose)
+            monitor.Log($"[HorseFollower] {messageFactory()}", LogLevel.Trace);
+    }
+
+    private void LogTrace(Func<string> messageFactory)
+    {
+        if (IsVerbose)
+            monitor.Log(messageFactory(), LogLevel.Trace);
     }
 
     private void CancelPathSearch()
@@ -618,6 +659,7 @@ internal sealed class HorseFollowerService
             SetHorseIdle(horse);
 
         followController = null;
+        wasExternallyControlled = false;
         ticksSincePlan = RetryIntervalTicks;
         hasPlannedTarget = false;
         horseAnimator.Reset();
@@ -657,7 +699,7 @@ internal sealed class HorseFollowerService
         Point TargetTile,
         Vector2 TargetPosition,
         float StoppingDistancePixels,
-        string Description);
+        Func<string> Description);
 
     private sealed record PathFailure(
         GameLocation Location,

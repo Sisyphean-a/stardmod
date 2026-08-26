@@ -19,6 +19,7 @@ internal sealed class HorseFollowController : PathFindController
     private readonly Action<Horse> maintainAnimation;
     private readonly Action<string> log;
     private readonly int initialWaypointCount;
+    private bool menuPaused;
 
     internal HorseFollowController(
         Horse horse,
@@ -49,6 +50,21 @@ internal sealed class HorseFollowController : PathFindController
 
     public override bool update(GameTime time)
     {
+        bool menuOpen = Game1.activeClickableMenu is not null && !Game1.IsMultiplayer;
+        if (menuOpen)
+        {
+            if (!menuPaused)
+            {
+                menuPaused = true;
+                log("controller-pause reason=menu");
+            }
+        }
+        else if (menuPaused)
+        {
+            menuPaused = false;
+            log("controller-resume reason=menu");
+        }
+
         bool withinStoppingDistance = ShouldStopForTargetDistance();
         if (!HasPath || withinStoppingDistance)
         {
@@ -58,11 +74,8 @@ internal sealed class HorseFollowController : PathFindController
         }
 
         maintainAnimation(horse);
-        if (Game1.activeClickableMenu is not null && !Game1.IsMultiplayer)
-        {
-            log("controller-pause reason=menu");
+        if (menuOpen)
             return false;
-        }
 
         Vector2 previousPosition = horse.Position;
         int direction = MoveAlongPath(out _);

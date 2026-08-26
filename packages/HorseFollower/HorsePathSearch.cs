@@ -26,9 +26,10 @@ internal sealed class HorsePathSearch
     private readonly GameLocation location;
     private readonly Point start;
     private readonly Vector2 targetPosition;
+    private readonly float stoppingDistancePixels;
     private readonly float stoppingDistanceSquared;
     private readonly Rectangle horseBounds;
-    private readonly PriorityQueue<Point, (int EstimatedSteps, float RemainingDistance)> open = new();
+    private readonly PriorityQueue<Point, (int EstimatedSteps, float RemainingDistanceSquared)> open = new();
     private readonly Dictionary<Point, int> costs = new();
     private readonly Dictionary<Point, Point> previous = new();
     private readonly HashSet<Point> closed = new();
@@ -43,6 +44,7 @@ internal sealed class HorsePathSearch
         this.horse = horse;
         this.location = location;
         this.targetPosition = targetPosition;
+        this.stoppingDistancePixels = stoppingDistancePixels;
         stoppingDistanceSquared = stoppingDistancePixels * stoppingDistancePixels;
         start = horse.TilePoint;
         horseBounds = horse.GetBoundingBox();
@@ -50,7 +52,7 @@ internal sealed class HorsePathSearch
         int startHeuristic = GetHeuristic(start, targetPosition, stoppingDistancePixels);
         open.Enqueue(
             start,
-            (startHeuristic, Vector2.Distance(GetTileCenter(start), targetPosition)));
+            (startHeuristic, GetDistanceSquared(GetTileCenter(start), targetPosition)));
     }
 
     internal bool IsComplete { get; private set; }
@@ -60,6 +62,36 @@ internal sealed class HorsePathSearch
     internal int SearchedNodeCount { get; private set; }
 
     internal Point StartTile => start;
+
+    // Guarantee: if the horse is on this search's route, discard only waypoints it has already passed; otherwise the caller must search again.
+    internal bool TryReuseFrom(Horse horse, out int trimmedWaypoints)
+    {
+        trimmedWaypoints = 0;
+        if (Path is null || horse.TilePoint == start)
+            return horse.TilePoint == start;
+
+        Point[] route = Path.ToArray();
+        int currentIndex = Array.IndexOf(route, horse.TilePoint);
+        if (currentIndex < 0)
+            return false;
+
+        bool reachedCurrentWaypoint = IsAtWaypoint(horse, route[currentIndex]);
+        int waypointsToTrim = currentIndex + (reachedCurrentWaypoint ? 1 : 0);
+        if (waypointsToTrim < route.Length)
+        {
+            Point next = route[waypointsToTrim];
+            if (next != horse.TilePoint && !CanTraverse(horse.TilePoint, next))
+                return false;
+        }
+
+        while (trimmedWaypoints < waypointsToTrim)
+        {
+            Path.Pop();
+            trimmedWaypoints++;
+        }
+
+        return true;
+    }
 
     // Flow: run a bounded amount of game-thread collision work per update, preserving the full A* frontier for later updates.
     internal void Advance(int nodeBudget)
@@ -110,9 +142,9 @@ internal sealed class HorsePathSearch
 
                     costs[next] = nextCost;
                     previous[next] = current;
-                    int heuristic = GetHeuristic(next, targetPosition, MathF.Sqrt(stoppingDistanceSquared));
-                    float remainingDistance = Vector2.Distance(GetTileCenter(next), targetPosition);
-                    open.Enqueue(next, (nextCost + heuristic, remainingDistance));
+                    int heuristic = GetHeuristic(next, targetPosition, stoppingDistancePixels);
+                    float remainingDistanceSquared = GetDistanceSquared(GetTileCenter(next), targetPosition);
+                    open.Enqueue(next, (nextCost + heuristic, remainingDistanceSquared));
                 }
             }
 
@@ -175,6 +207,12 @@ internal sealed class HorsePathSearch
         return offset.LengthSquared() <= stoppingDistanceSquared;
     }
 
+    private static bool IsAtWaypoint(Horse horse, Point waypoint)
+    {
+        Vector2 offset = GetTileCenter(waypoint) - horse.getStandingPosition();
+        return Math.Abs(offset.X) <= 0.5f && Math.Abs(offset.Y) <= 0.5f;
+    }
+
     private Stack<Point> ReconstructPath(Point end)
     {
         Stack<Point> path = new();
@@ -199,6 +237,11 @@ internal sealed class HorsePathSearch
             0f,
             Math.Max(Math.Abs(offset.X), Math.Abs(offset.Y)) - stoppingDistancePixels);
         return (int)MathF.Ceiling(remainingDistance / 64f);
+    }
+
+    private static float GetDistanceSquared(Vector2 first, Vector2 second)
+    {
+        return Vector2.DistanceSquared(first, second);
     }
 
     private static Vector2 GetTileCenter(Point tile)

@@ -25,12 +25,14 @@ internal sealed class RiderPathSearch
     private readonly GameLocation location;
     private readonly Point start;
     private readonly Vector2 targetPosition;
+    private readonly float stoppingDistancePixels;
     private readonly float stoppingDistanceSquared;
     private readonly Rectangle riderBounds;
-    private readonly PriorityQueue<Point, (int EstimatedSteps, float RemainingDistance)> open = new();
+    private readonly PriorityQueue<Point, (int EstimatedSteps, float RemainingDistanceSquared)> open = new();
     private readonly Dictionary<Point, int> costs = new();
     private readonly Dictionary<Point, Point> previous = new();
     private readonly HashSet<Point> closed = new();
+    private readonly Dictionary<Point, bool> standability = new();
 
     internal RiderPathSearch(
         Farmer rider,
@@ -41,6 +43,7 @@ internal sealed class RiderPathSearch
         this.rider = rider;
         this.location = location;
         this.targetPosition = targetPosition;
+        this.stoppingDistancePixels = stoppingDistancePixels;
         stoppingDistanceSquared = stoppingDistancePixels * stoppingDistancePixels;
         start = rider.TilePoint;
         riderBounds = rider.GetBoundingBox();
@@ -48,7 +51,7 @@ internal sealed class RiderPathSearch
         int startHeuristic = GetHeuristic(start, targetPosition, stoppingDistancePixels);
         open.Enqueue(
             start,
-            (startHeuristic, Vector2.Distance(GetTileCenter(start), targetPosition)));
+            (startHeuristic, GetDistanceSquared(GetTileCenter(start), targetPosition)));
     }
 
     internal bool IsComplete { get; private set; }
@@ -65,6 +68,7 @@ internal sealed class RiderPathSearch
         if (nodeBudget <= 0)
             throw new ArgumentOutOfRangeException(nameof(nodeBudget));
 
+        standability.Clear();
         int processedNodes = 0;
         while (processedNodes < nodeBudget && open.TryDequeue(out Point current, out _))
         {
@@ -100,9 +104,9 @@ internal sealed class RiderPathSearch
 
                 costs[next] = nextCost;
                 previous[next] = current;
-                int heuristic = GetHeuristic(next, targetPosition, MathF.Sqrt(stoppingDistanceSquared));
-                float remainingDistance = Vector2.Distance(GetTileCenter(next), targetPosition);
-                open.Enqueue(next, (nextCost + heuristic, remainingDistance));
+                int heuristic = GetHeuristic(next, targetPosition, stoppingDistancePixels);
+                float remainingDistanceSquared = GetDistanceSquared(GetTileCenter(next), targetPosition);
+                open.Enqueue(next, (nextCost + heuristic, remainingDistanceSquared));
             }
         }
 
@@ -130,13 +134,16 @@ internal sealed class RiderPathSearch
 
     private bool CanHorseStandAt(Point tile)
     {
+        if (standability.TryGetValue(tile, out bool canStand))
+            return canStand;
+
         Vector2 center = GetTileCenter(tile);
         Rectangle bounds = new(
             (int)center.X - riderBounds.Width / 2,
             (int)center.Y - riderBounds.Height / 2,
             riderBounds.Width,
             riderBounds.Height);
-        return !location.isCollidingPosition(
+        canStand = !location.isCollidingPosition(
             bounds,
             Game1.viewport,
             isFarmer: true,
@@ -147,6 +154,8 @@ internal sealed class RiderPathSearch
             projectile: false,
             ignoreCharacterRequirement: false,
             skipCollisionEffects: true);
+        standability[tile] = canStand;
+        return canStand;
     }
 
     private bool IsWithinTargetRadius(Point tile)
@@ -176,6 +185,11 @@ internal sealed class RiderPathSearch
             0f,
             Math.Max(Math.Abs(offset.X), Math.Abs(offset.Y)) - stoppingDistancePixels);
         return (int)MathF.Ceiling(remainingDistance / 64f);
+    }
+
+    private static float GetDistanceSquared(Vector2 first, Vector2 second)
+    {
+        return Vector2.DistanceSquared(first, second);
     }
 
     private static Vector2 GetTileCenter(Point tile)
