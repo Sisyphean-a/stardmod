@@ -1,4 +1,4 @@
-using System.Globalization;
+using System.Reflection;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -12,11 +12,12 @@ namespace Toolbox;
 
 internal static class PassableCropsFeature
 {
-    private const string ShakeKey = "xixifu.Toolbox/passable-crops-shake";
-
     private static ModConfig currentConfig = null!;
     private static Character? lastCharacter;
     private static DrawState drawState;
+    private static readonly Dictionary<Object, ShakeState> shakeStates = new();
+    private static GameLocation? shakeLocation;
+    private static bool shakeStateEnabled;
 
     internal static void Initialize(Func<ModConfig> getConfig)
     {
@@ -43,7 +44,8 @@ internal static class PassableCropsFeature
             harmony,
             AccessTools.Method(typeof(Bush), nameof(Bush.draw), new[] { typeof(SpriteBatch) }),
             prefix: new HarmonyMethod(typeof(PassableCropsFeature), nameof(BushDrawPrefix)),
-            postfix: new HarmonyMethod(typeof(PassableCropsFeature), nameof(TerrainDrawPostfix)));
+            postfix: new HarmonyMethod(typeof(PassableCropsFeature), nameof(TerrainDrawPostfix)),
+            transpiler: new HarmonyMethod(typeof(PassableCropsFeature), nameof(LocalDrawTranspiler)));
         Patch(
             harmony,
             AccessTools.Method(typeof(Bush), nameof(Bush.getBoundingBox)),
@@ -56,7 +58,8 @@ internal static class PassableCropsFeature
             harmony,
             AccessTools.Method(typeof(Tree), nameof(Tree.draw), new[] { typeof(SpriteBatch) }),
             prefix: new HarmonyMethod(typeof(PassableCropsFeature), nameof(TreeDrawPrefix)),
-            postfix: new HarmonyMethod(typeof(PassableCropsFeature), nameof(TerrainDrawPostfix)));
+            postfix: new HarmonyMethod(typeof(PassableCropsFeature), nameof(TerrainDrawPostfix)),
+            transpiler: new HarmonyMethod(typeof(PassableCropsFeature), nameof(LocalDrawTranspiler)));
         Patch(
             harmony,
             AccessTools.Method(typeof(Tree), nameof(Tree.getBoundingBox)),
@@ -69,7 +72,8 @@ internal static class PassableCropsFeature
             harmony,
             AccessTools.Method(typeof(FruitTree), nameof(FruitTree.draw), new[] { typeof(SpriteBatch) }),
             prefix: new HarmonyMethod(typeof(PassableCropsFeature), nameof(FruitTreeDrawPrefix)),
-            postfix: new HarmonyMethod(typeof(PassableCropsFeature), nameof(TerrainDrawPostfix)));
+            postfix: new HarmonyMethod(typeof(PassableCropsFeature), nameof(TerrainDrawPostfix)),
+            transpiler: new HarmonyMethod(typeof(PassableCropsFeature), nameof(LocalDrawTranspiler)));
         Patch(
             harmony,
             AccessTools.Method(typeof(FruitTree), nameof(FruitTree.getBoundingBox)),
@@ -114,52 +118,19 @@ internal static class PassableCropsFeature
                 nameof(Object.draw),
                 new[] { typeof(SpriteBatch), typeof(int), typeof(int), typeof(float) }),
             prefix: new HarmonyMethod(typeof(PassableCropsFeature), nameof(ObjectDrawPrefix)),
-            postfix: new HarmonyMethod(typeof(PassableCropsFeature), nameof(ObjectDrawPostfix)));
-        Patch(
-            harmony,
-            AccessTools.Method(
-                typeof(SpriteBatch),
-                nameof(SpriteBatch.Draw),
-                new[]
-                {
-                    typeof(Texture2D),
-                    typeof(Rectangle),
-                    typeof(Rectangle?),
-                    typeof(Color),
-                    typeof(float),
-                    typeof(Vector2),
-                    typeof(SpriteEffects),
-                    typeof(float)
-                }),
-            prefix: new HarmonyMethod(typeof(PassableCropsFeature), nameof(SpriteBatchDrawRectanglePrefix)));
-        Patch(
-            harmony,
-            AccessTools.Method(
-                typeof(SpriteBatch),
-                nameof(SpriteBatch.Draw),
-                new[]
-                {
-                    typeof(Texture2D),
-                    typeof(Vector2),
-                    typeof(Rectangle?),
-                    typeof(Color),
-                    typeof(float),
-                    typeof(Vector2),
-                    typeof(Vector2),
-                    typeof(SpriteEffects),
-                    typeof(float)
-                }),
-            prefix: new HarmonyMethod(typeof(PassableCropsFeature), nameof(SpriteBatchDrawVectorPrefix)));
+            postfix: new HarmonyMethod(typeof(PassableCropsFeature), nameof(ObjectDrawPostfix)),
+            transpiler: new HarmonyMethod(typeof(PassableCropsFeature), nameof(LocalDrawTranspiler)));
     }
 
     private static void Patch(
         Harmony harmony,
         System.Reflection.MethodBase? method,
         HarmonyMethod? prefix = null,
-        HarmonyMethod? postfix = null)
+        HarmonyMethod? postfix = null,
+        HarmonyMethod? transpiler = null)
     {
         if (method is not null)
-            harmony.Patch(method, prefix, postfix);
+            harmony.Patch(method, prefix, postfix, transpiler);
     }
 
     private static void HoeDirtIsPassablePostfix(HoeDirt __instance, ref bool __result, Character c)
@@ -284,10 +255,7 @@ internal static class PassableCropsFeature
     private static void BushGetBoundingBoxPostfix(ref Rectangle __result)
     {
         if (drawState.Type == DrawObjectType.Terrain)
-        {
-            drawState = default;
             __result.Y -= 46;
-        }
     }
 
     private static void TreeGetBoundingBoxPostfix(Tree __instance, ref Rectangle __result)
@@ -295,7 +263,6 @@ internal static class PassableCropsFeature
         if (drawState.Type != DrawObjectType.Terrain)
             return;
 
-        drawState = default;
         int offset = __instance.growthStage.Value switch
         {
             0 or 1 => -46,
@@ -310,7 +277,6 @@ internal static class PassableCropsFeature
         if (drawState.Type != DrawObjectType.Terrain)
             return;
 
-        drawState = default;
         int offset = __instance.growthStage.Value switch
         {
             0 or 1 => -46,
@@ -322,6 +288,7 @@ internal static class PassableCropsFeature
 
     private static void ObjectDrawPrefix(Object __instance)
     {
+        PrepareShakeState();
         drawState = default;
         if (!currentConfig.EnablePassableCrops
             || !currentConfig.UseCustomDrawing
@@ -338,7 +305,111 @@ internal static class PassableCropsFeature
         drawState = default;
     }
 
-    private static void SpriteBatchDrawRectanglePrefix(ref Rectangle destinationRectangle, ref float rotation, ref Vector2 origin)
+    // Keep the transform on the object/terrain draw call sites; SpriteBatch.Draw is a global hot path.
+    private static IEnumerable<CodeInstruction> LocalDrawTranspiler(IEnumerable<CodeInstruction> instructions)
+    {
+        foreach (CodeInstruction instruction in instructions)
+        {
+            if (instruction.operand is MethodInfo method
+                && method.DeclaringType == typeof(SpriteBatch)
+                && method.Name == nameof(SpriteBatch.Draw))
+            {
+                MethodInfo? replacement = GetLocalDrawMethod(method);
+                if (replacement is not null)
+                    instruction.operand = replacement;
+            }
+
+            yield return instruction;
+        }
+    }
+
+    private static MethodInfo? GetLocalDrawMethod(MethodInfo method)
+    {
+        Type[] parameterTypes = method.GetParameters().Select(parameter => parameter.ParameterType).ToArray();
+        if (parameterTypes.Length == 8 && parameterTypes[1] == typeof(Rectangle))
+        {
+            return AccessTools.Method(
+                typeof(PassableCropsFeature),
+                nameof(DrawRectangleLocally),
+                new[]
+                {
+                    typeof(SpriteBatch), typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?),
+                    typeof(Color), typeof(float), typeof(Vector2), typeof(SpriteEffects), typeof(float)
+                });
+        }
+
+        if (parameterTypes.Length == 9 && parameterTypes[1] == typeof(Vector2))
+        {
+            return parameterTypes[6] == typeof(Vector2)
+                ? AccessTools.Method(
+                    typeof(PassableCropsFeature),
+                    nameof(DrawVectorLocally),
+                    new[]
+                    {
+                        typeof(SpriteBatch), typeof(Texture2D), typeof(Vector2), typeof(Rectangle?),
+                        typeof(Color), typeof(float), typeof(Vector2), typeof(Vector2), typeof(SpriteEffects), typeof(float)
+                    })
+                : AccessTools.Method(
+                    typeof(PassableCropsFeature),
+                    nameof(DrawVectorScalarLocally),
+                    new[]
+                    {
+                        typeof(SpriteBatch), typeof(Texture2D), typeof(Vector2), typeof(Rectangle?),
+                        typeof(Color), typeof(float), typeof(Vector2), typeof(float), typeof(SpriteEffects), typeof(float)
+                    });
+        }
+
+        return null;
+    }
+
+    private static void DrawRectangleLocally(
+        SpriteBatch spriteBatch,
+        Texture2D texture,
+        Rectangle destinationRectangle,
+        Rectangle? sourceRectangle,
+        Color color,
+        float rotation,
+        Vector2 origin,
+        SpriteEffects effects,
+        float layerDepth)
+    {
+        ApplyRectangleDrawState(ref destinationRectangle, ref rotation, ref origin);
+        spriteBatch.Draw(texture, destinationRectangle, sourceRectangle, color, rotation, origin, effects, layerDepth);
+    }
+
+    private static void DrawVectorLocally(
+        SpriteBatch spriteBatch,
+        Texture2D texture,
+        Vector2 position,
+        Rectangle? sourceRectangle,
+        Color color,
+        float rotation,
+        Vector2 origin,
+        Vector2 scale,
+        SpriteEffects effects,
+        float layerDepth)
+    {
+        ApplyVectorDrawState(ref position, ref rotation, ref origin, ref layerDepth);
+        spriteBatch.Draw(texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
+    }
+
+    private static void DrawVectorScalarLocally(
+        SpriteBatch spriteBatch,
+        Texture2D texture,
+        Vector2 position,
+        Rectangle? sourceRectangle,
+        Color color,
+        float rotation,
+        Vector2 origin,
+        float scale,
+        SpriteEffects effects,
+        float layerDepth)
+    {
+        ApplyVectorDrawState(ref position, ref rotation, ref origin, ref layerDepth);
+        spriteBatch.Draw(texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
+    }
+
+    private static void ApplyRectangleDrawState(ref Rectangle destinationRectangle, ref float rotation, ref Vector2 origin)
     {
         if (drawState.Type == DrawObjectType.None)
             return;
@@ -354,7 +425,7 @@ internal static class PassableCropsFeature
         }
     }
 
-    private static void SpriteBatchDrawVectorPrefix(ref Vector2 position, ref float rotation, ref Vector2 origin, ref float layerDepth)
+    private static void ApplyVectorDrawState(ref Vector2 position, ref float rotation, ref Vector2 origin, ref float layerDepth)
     {
         if (drawState.Type == DrawObjectType.None)
             return;
@@ -438,51 +509,56 @@ internal static class PassableCropsFeature
 
     private static void ShakeObject(Object item, PassableObjectType type)
     {
-        if (!currentConfig.ShakeWhenPassing || item.Location != Game1.currentLocation)
+        PrepareShakeState();
+        if (!shakeStateEnabled || item.Location != Game1.currentLocation)
             return;
 
         float maxShake = type is PassableObjectType.Scarecrow or PassableObjectType.Sprinkler
             ? MathF.PI / 16f
             : MathF.PI / 12f;
-        item.modData[ShakeKey] = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{maxShake};0;true");
+        shakeStates[item] = new ShakeState(maxShake, 0f, true);
         PlayRustleSound(item.TileLocation, item.Location);
     }
 
     private static float GetShakeRotation(Object item)
     {
-        if (!item.modData.TryGetValue(ShakeKey, out string? raw))
+        PrepareShakeState();
+        if (!shakeStateEnabled || !shakeStates.TryGetValue(item, out ShakeState? state))
             return 0f;
 
-        string[] parts = raw.Split(';');
-        if (parts.Length != 3
-            || !float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float maxShake)
-            || !float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float rotation)
-            || !bool.TryParse(parts[2], out bool left))
+        if (state.MaxShake > 0f)
         {
-            item.modData.Remove(ShakeKey);
-            return 0f;
-        }
-
-        if (maxShake > 0f)
-        {
-            rotation += left ? -MathF.PI / 100f : MathF.PI / 100f;
-            if (MathF.Abs(rotation) >= maxShake)
-                left = false;
-            maxShake = Math.Max(0f, maxShake - MathF.PI / 300f);
+            state.Rotation += state.Left ? -MathF.PI / 100f : MathF.PI / 100f;
+            if (MathF.Abs(state.Rotation) >= state.MaxShake)
+                state.Left = false;
+            state.MaxShake = Math.Max(0f, state.MaxShake - MathF.PI / 300f);
         }
         else
         {
-            rotation /= 2f;
-            if (rotation <= 0.01f)
-                rotation = 0f;
+            state.Rotation /= 2f;
+            if (state.Rotation <= 0.01f)
+            {
+                shakeStates.Remove(item);
+                return 0f;
+            }
         }
 
-        item.modData[ShakeKey] = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{maxShake};{rotation};{left}");
-        return rotation;
+        return state.Rotation;
+    }
+
+    private static void PrepareShakeState()
+    {
+        bool enabled = Context.IsWorldReady
+            && currentConfig.EnablePassableCrops
+            && currentConfig.ShakeWhenPassing
+            && Game1.currentLocation is not null;
+        GameLocation? location = enabled ? Game1.currentLocation : null;
+        if (enabled == shakeStateEnabled && ReferenceEquals(location, shakeLocation))
+            return;
+
+        shakeStates.Clear();
+        shakeLocation = location;
+        shakeStateEnabled = enabled;
     }
 
     private static bool TryGetPassableObject(Object item, out PassableObjectType type)
@@ -586,5 +662,19 @@ internal static class PassableCropsFeature
 
         internal DrawObjectType Type;
         internal float Rotation;
+    }
+
+    private sealed class ShakeState
+    {
+        internal ShakeState(float maxShake, float rotation, bool left)
+        {
+            MaxShake = maxShake;
+            Rotation = rotation;
+            Left = left;
+        }
+
+        internal float MaxShake;
+        internal float Rotation;
+        internal bool Left;
     }
 }
