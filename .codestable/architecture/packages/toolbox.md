@@ -17,7 +17,7 @@ scope: package:toolbox
 - 提供背包内快速堆叠到附近箱子功能，距离可配置；只处理当前地点的普通箱子和大箱子，检测到独立版 ConvenientInventory 时跳过内置补丁，避免重复按钮和物品转移。
 - 提供可配置的穿过作物、茶树、树苗、果树、杂草、洒水器、稻草人和觅食物功能；检测到旧的独立版 PassableCrops 时跳过内置补丁，避免重复修改碰撞和绘制方法。
 - 在原版世界地图和 HUD 小地图上显示 NPC、特殊商人、多人农民和农场建筑的位置，并提供 NPC 过滤与小地图配置；检测到旧的独立版 NPCMapLocations 时跳过内置地图功能，避免重复替换地图页。
-- 在矿井按当前矿层累计普通石头的破坏次数；每次石头移除都输出诊断日志，若此前未生成楼梯且该层存在下一层，则第 11 块石头安排必出的楼梯。
+- 在矿井按当前矿层累计普通石头的破坏次数；若此前未生成楼梯且该层存在下一层，则第 11 块石头安排必出的楼梯。
 - 保留恢复出的动物信息调试处理器，但当前不注册按钮事件。
 - 为这些功能提供一个合并的 `ModConfig`，配置入口统一使用 Generic Mod Config Menu（GMCM）；工具箱不再创建自定义游戏菜单。
 
@@ -33,7 +33,7 @@ scope: package:toolbox
 - 快速堆叠背包按钮和箱子转移：`packages/Toolbox/QuickStackFeature.cs`、`packages/Toolbox/assets/quickStackIcon.png`。
 - 穿过作物 Harmony 补丁：`packages/Toolbox/PassableCropsFeature.cs`。
 - NPC 地图位置与小地图：`packages/Toolbox/NpcMapLocationsFeature.cs`。
-- 矿井梯子保证与诊断日志：`packages/Toolbox/LadderLocatorFeature.cs`。
+- 矿井梯子保证：`packages/Toolbox/LadderLocatorFeature.cs`。
 - 可选 GMCM 运行时桥接：`packages/Toolbox/GenericModConfigMenuAdapter.cs`。
 - 包身份：`packages/Toolbox/manifest.json`。
 - 构建和游戏程序集引用：`packages/Toolbox/Toolbox.csproj`。

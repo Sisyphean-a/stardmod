@@ -77,7 +77,7 @@ public sealed class ModEntry : Mod
         }
         else
         {
-            ladderLocatorFeature = new LadderLocatorFeature(helper, Monitor);
+            ladderLocatorFeature = new LadderLocatorFeature(helper);
             ladderLocatorFeature.RegisterEvents();
         }
 

@@ -27,7 +27,6 @@ internal sealed class LadderLocatorFeature
     };
 
     private readonly IModHelper helper;
-    private readonly IMonitor monitor;
     private readonly Dictionary<Vector2, LadderMarker> ladderMarkers = new();
     private readonly Texture2D pixelTexture;
     private GameLocation? trackedLocation;
@@ -36,10 +35,9 @@ internal sealed class LadderLocatorFeature
     private LadderSearchState? lastSearchState;
     private bool revealActive;
 
-    internal LadderLocatorFeature(IModHelper helper, IMonitor monitor)
+    internal LadderLocatorFeature(IModHelper helper)
     {
         this.helper = helper;
-        this.monitor = monitor;
         pixelTexture = new Texture2D(Game1.graphics.GraphicsDevice, 1, 1);
         pixelTexture.SetData(new[] { Color.White });
     }
@@ -87,10 +85,6 @@ internal sealed class LadderLocatorFeature
 
             removedStones++;
             brokenStoneCount++;
-            monitor.Log(
-                $"梯子定位：矿层 {mine.mineLevel} 第 {brokenStoneCount} 块石头已砸碎，坐标=({removed.Key.X},{removed.Key.Y})。",
-                LogLevel.Info);
-
             if (brokenStoneCount == GuaranteedLadderAfterBrokenStones)
                 guaranteedLadderTile = removed.Key;
         }
@@ -104,31 +98,13 @@ internal sealed class LadderLocatorFeature
             return;
         }
 
-        if (guaranteedLadderTile is Vector2 tile)
+        if (guaranteedLadderTile is Vector2 tile
+            && mine.shouldCreateLadderOnThisLevel()
+            && Game1.IsMasterGame)
         {
-            bool canCreateLadder = mine.shouldCreateLadderOnThisLevel();
-            if (canCreateLadder && Game1.IsMasterGame)
-            {
-                mine.createLadderDown((int)tile.X, (int)tile.Y);
-                monitor.Log(
-                    $"梯子定位：矿层 {mine.mineLevel} 已达到第 {GuaranteedLadderAfterBrokenStones} 块石头，已安排必出的楼梯。",
-                    LogLevel.Info);
-                ClearMarkers();
-                return;
-            }
-
-            if (!canCreateLadder)
-            {
-                monitor.Log(
-                    $"梯子定位：矿层 {mine.mineLevel} 不允许生成下一层楼梯，未执行第 {GuaranteedLadderAfterBrokenStones} 块石头保证。",
-                    LogLevel.Warn);
-            }
-            else
-            {
-                monitor.Log(
-                    $"梯子定位：矿层 {mine.mineLevel} 的第 {GuaranteedLadderAfterBrokenStones} 块石头由非主机处理，等待主机生成楼梯。",
-                    LogLevel.Trace);
-            }
+            mine.createLadderDown((int)tile.X, (int)tile.Y);
+            ClearMarkers();
+            return;
         }
 
         if (brokenStoneCount < RevealAfterBrokenStones)
@@ -170,7 +146,6 @@ internal sealed class LadderLocatorFeature
             return;
 
         lastSearchState = searchState;
-        bool wasVisible = revealActive;
         ladderMarkers.Clear();
         revealActive = false;
 
@@ -207,12 +182,6 @@ internal sealed class LadderLocatorFeature
         }
 
         revealActive = ladderMarkers.Count > 0;
-        if (revealActive && !wasVisible)
-        {
-            monitor.Log(
-                $"矿井已连续破坏 {brokenStoneCount} 块石头仍未出现梯子，已显示下一层入口提示。",
-                LogLevel.Trace);
-        }
     }
 
     private void OnRenderedWorld(object? sender, RenderedWorldEventArgs e)

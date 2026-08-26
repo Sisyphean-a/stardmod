@@ -42,7 +42,7 @@ code-paths:
 - 快速堆叠只受 `EnableQuickStack` 和 `QuickStackRange` 控制；只扫描当前地点距离内的普通箱子和大箱子，先合并相同物品已有堆叠，若该箱子已有同类物品但堆叠已满，再使用空位新增堆叠；不处理没有同类物品的空箱，也不处理特殊库存。检测到 `gaussfire.ConvenientInventory` 时跳过工具箱补丁并记录警告。
 - 穿过作物只对农民生效，除非开启 `PassableByAll`；`PassableTreeGrowth` 和 `PassableFruitTreeGrowth` 分别限制可穿过的树木阶段。`SlowDownWhenPassing`、`ShakeWhenPassing`、`PlaySoundWhenPassing` 和 `UseCustomDrawing` 控制经过时的附加效果。检测到 `NCarigon.PassableCrops` 时跳过工具箱补丁并记录警告，避免重复修改碰撞和绘制方法。
 - NPC 地图位置只在 `EnableNpcMapLocations` 开启时运行；地图页通过 `WorldMapManager` 计算室内建筑回退位置，小地图通过 `ShowMinimap`、排除列表和缓存帧数控制，并在 `MineShaft` 矿洞场景中隐藏。NPC 可按好感度、同位置、今日交谈、任务和生日过滤；Android 使用左触摸拖动小地图，桌面使用右键拖动；检测到 `Bouhm.NPCMapLocations` 时跳过工具箱地图功能并记录警告。
-- 矿井梯子定位按当前矿层累计被移除且名称为 `Stone` 的普通石头；每块石头以 `Info` 日志输出矿层和序号。若前 10 块石头后仍未生成楼梯，主机在第 11 块石头的位置安排必出的楼梯；没有下一层的矿层不执行该保证。
+- 矿井梯子定位按当前矿层累计被移除且名称为 `Stone` 的普通石头。若前 10 块石头后仍未生成楼梯，主机在第 11 块石头的位置安排必出的楼梯；没有下一层的矿层不执行该保证。
 - 自动输入法控制只在 Windows 上生效：正常游戏操作先取消已有组合文本并关闭候选栏，再屏蔽输入法；屏蔽期间若系统按键切换又为游戏窗口关联输入法，则再次取消组合并屏蔽；游戏原生文本框或文字输入菜单活动时允许输入法；回到标题画面或关闭功能时恢复游戏窗口原有输入法上下文。Android 和其他非 Windows 平台直接跳过该功能，不调用 SDL Windows 信息或 `imm32.dll`。
 - 工具箱主体保持 `net6.0` 托管 DLL 边界；Android 兼容指在支持 SMAPI 的 Android 运行环境中可加载并运行，不要求生成 Android 应用包。
 - GMCM 是可选集成，未安装或 API 不兼容时不阻止工具箱主体加载，但工具箱不会提供自定义设置页；需要游戏内配置时必须安装兼容的 GMCM。
