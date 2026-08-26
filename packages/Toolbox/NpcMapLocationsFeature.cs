@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
@@ -105,10 +106,12 @@ internal sealed class NpcMapLocationsFeature
     private readonly Dictionary<string, BuildingMarker> buildingMarkers = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<NpcMarker> orderedNpcMarkers = new();
     private readonly Dictionary<long, FarmerMapPosition> farmerMapPositions = new();
+    private string? markerSignature;
     private NpcMapPage? mapPage;
     private NpcMapPage? minimapPage;
     private SpriteBatch? minimapSpriteBatch;
     private RasterizerState? minimapRasterizer;
+    private MinimapLayoutKey? minimapLayoutKey;
     private bool minimapDragging;
     private Point minimapDragOffset;
 
@@ -284,6 +287,7 @@ internal sealed class NpcMapLocationsFeature
         {
             ModConfig config = getConfig();
             MoveMinimap(config, Game1.getMousePosition());
+            UpdateMinimapPage();
         }
 
         DrawMinimap();
@@ -337,6 +341,7 @@ internal sealed class NpcMapLocationsFeature
     {
         npcMarkers.Clear();
         orderedNpcMarkers.Clear();
+        markerSignature = null;
         if (!Context.IsWorldReady)
             return;
 
@@ -422,6 +427,7 @@ internal sealed class NpcMapLocationsFeature
         if (npcMarkers.Count == 0)
             ResetMarkers();
 
+        HashSet<string> questTargets = GetQuestTargets();
         foreach (NPC npc in GetVillagers())
         {
             if (!npcMarkers.TryGetValue(npc.Name, out NpcMarker? marker))
@@ -437,11 +443,16 @@ internal sealed class NpcMapLocationsFeature
             marker.IsOutdoors = npc.currentLocation.IsOutdoors;
             marker.Position = GetWorldMapPosition(npc.currentLocation, npc.TilePoint);
             marker.IsBirthday = npc.isBirthday();
-            marker.HasQuest = HasQuest(npc.Name);
+            marker.HasQuest = questTargets.Contains(npc.Name);
             marker.IsHidden = ShouldHide(npc, marker);
             marker.Layer = marker.IsBirthday || marker.HasQuest ? 5 : marker.IsOutdoors ? 6 : 2;
         }
 
+        string newSignature = GetMarkerSignature();
+        if (string.Equals(markerSignature, newSignature, StringComparison.Ordinal))
+            return;
+
+        markerSignature = newSignature;
         RebuildMarkerOrder();
         SyncNpcMarkers();
     }
@@ -605,8 +616,9 @@ internal sealed class NpcMapLocationsFeature
         return firstRoot.NameOrUniqueName == secondRoot.NameOrUniqueName;
     }
 
-    private bool HasQuest(string npcName)
+    private static HashSet<string> GetQuestTargets()
     {
+        HashSet<string> targets = new(StringComparer.Ordinal);
         foreach (Quest quest in Game1.player.questLog)
         {
             if (!quest.accepted.Value || !quest.dailyQuest.Value || quest.completed.Value)
@@ -620,11 +632,32 @@ internal sealed class NpcMapLocationsFeature
                 ResourceCollectionQuest resourceQuest => resourceQuest.target.Value,
                 _ => null
             };
-            if (target == npcName)
-                return true;
+            if (!string.IsNullOrEmpty(target))
+                targets.Add(target);
         }
 
-        return false;
+        return targets;
+    }
+
+    private string GetMarkerSignature()
+    {
+        StringBuilder signature = new();
+        foreach ((string name, NpcMarker marker) in npcMarkers.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            signature.Append(name).Append('\u001f')
+                .Append(marker.LocationName).Append('\u001f')
+                .Append(marker.IsOutdoors ? '1' : '0')
+                .Append(marker.Position?.RegionId).Append(':')
+                .Append(marker.Position?.X ?? 0).Append(':')
+                .Append(marker.Position?.Y ?? 0).Append('\u001f')
+                .Append(marker.IsBirthday ? '1' : '0')
+                .Append(marker.HasQuest ? '1' : '0')
+                .Append(marker.IsHidden ? '1' : '0')
+                .Append(marker.CropOffset).Append('\u001f')
+                .Append((int)marker.Type).Append(';');
+        }
+
+        return signature.ToString();
     }
 
     private void UpdateFarmBuildingLocations()
@@ -741,12 +774,31 @@ internal sealed class NpcMapLocationsFeature
             Game1.currentLocation,
             Game1.player.TilePoint);
         if (playerPosition is null)
+        {
+            minimapPage = null;
             return;
-
-        if (minimapPage is null || minimapPage.RegionId != playerPosition.RegionId)
-            minimapPage = new NpcMapPage(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height, this);
+        }
 
         Rectangle bounds = GetMinimapBounds();
+        MinimapLayoutKey layoutKey = new(
+            playerPosition.RegionId,
+            Game1.currentLocation.NameOrUniqueName,
+            Game1.player.TilePoint,
+            bounds,
+            Game1.uiViewport.Width,
+            Game1.uiViewport.Height);
+        if (minimapPage is not null && minimapLayoutKey == layoutKey)
+            return;
+
+        if (minimapPage is null
+            || minimapPage.RegionId != playerPosition.RegionId
+            || minimapPage.ViewportWidth != Game1.uiViewport.Width
+            || minimapPage.ViewportHeight != Game1.uiViewport.Height)
+        {
+            minimapPage = new NpcMapPage(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height, this);
+        }
+
+        minimapLayoutKey = layoutKey;
         Rectangle mapBounds = minimapPage.MapBounds;
         int mapWidth = mapBounds.Width * 4;
         int mapHeight = mapBounds.Height * 4;
@@ -765,7 +817,6 @@ internal sealed class NpcMapLocationsFeature
 
     private void DrawMinimap()
     {
-        UpdateMinimapPage();
         if (minimapPage is null)
             return;
 
@@ -938,8 +989,12 @@ internal sealed class NpcMapLocationsFeature
             : base(x, y, width, height)
         {
             this.feature = feature;
+            ViewportWidth = width;
+            ViewportHeight = height;
         }
 
+        internal int ViewportWidth { get; }
+        internal int ViewportHeight { get; }
         internal string RegionId => mapRegion.Id;
 
         internal Rectangle MapBounds
@@ -1022,6 +1077,14 @@ internal sealed class NpcMapLocationsFeature
     private sealed record BuildingMarker(string CommonName, MapPosition Position);
 
     private sealed record MapPosition(string RegionId, int X, int Y);
+
+    private sealed record MinimapLayoutKey(
+        string RegionId,
+        string LocationName,
+        Point PlayerTile,
+        Rectangle Bounds,
+        int ViewportWidth,
+        int ViewportHeight);
 
     private enum CharacterType
     {

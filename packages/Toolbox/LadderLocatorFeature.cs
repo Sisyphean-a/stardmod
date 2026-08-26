@@ -31,6 +31,8 @@ internal sealed class LadderLocatorFeature
     private readonly Texture2D pixelTexture;
     private GameLocation? trackedLocation;
     private int brokenStoneCount;
+    private int objectListVersion;
+    private LadderSearchState? lastSearchState;
     private bool revealActive;
 
     internal LadderLocatorFeature(IModHelper helper, IMonitor monitor)
@@ -72,6 +74,7 @@ internal sealed class LadderLocatorFeature
             return;
         }
 
+        objectListVersion++;
         if (mine.ladderHasSpawned)
         {
             ClearMarkers();
@@ -105,7 +108,8 @@ internal sealed class LadderLocatorFeature
         {
             ClearMarkers();
         }
-        else if (brokenStoneCount >= RevealAfterBrokenStones && !revealActive)
+        else if (brokenStoneCount >= RevealAfterBrokenStones
+            && (lastSearchState is null || !lastSearchState.Equals(GetSearchState(mine))))
         {
             RefreshMarkers(mine);
         }
@@ -113,13 +117,18 @@ internal sealed class LadderLocatorFeature
 
     private void RefreshMarkers(MineShaft mine)
     {
+        LadderSearchState searchState = GetSearchState(mine);
+        if (lastSearchState is not null && lastSearchState.Equals(searchState))
+            return;
+
+        lastSearchState = searchState;
         bool wasVisible = revealActive;
         ladderMarkers.Clear();
         revealActive = false;
 
         if (mine.ladderHasSpawned
-            || mine.mustKillAllMonstersToAdvance()
-            || !mine.shouldCreateLadderOnThisLevel())
+            || searchState.MustKillAllMonsters
+            || !searchState.ShouldCreateLadder)
         {
             return;
         }
@@ -241,10 +250,24 @@ internal sealed class LadderLocatorFeature
         return Color.Lerp(RainbowPalette[index], RainbowPalette[(index + 1) % RainbowPalette.Length], amount);
     }
 
+    private LadderSearchState GetSearchState(MineShaft mine)
+    {
+        return new LadderSearchState(
+            objectListVersion,
+            mine.mineLevel,
+            mine.stonesLeftOnThisLevel,
+            mine.EnemyCount,
+            mine.ladderHasSpawned,
+            mine.mustKillAllMonstersToAdvance(),
+            mine.shouldCreateLadderOnThisLevel());
+    }
+
     private void Reset(GameLocation? location)
     {
         trackedLocation = location;
         brokenStoneCount = 0;
+        objectListVersion = 0;
+        lastSearchState = null;
         ClearMarkers();
     }
 
@@ -263,6 +286,15 @@ internal sealed class LadderLocatorFeature
     {
         return string.Equals(obj.Name, "Stone", StringComparison.Ordinal);
     }
+
+    private sealed record LadderSearchState(
+        int ObjectListVersion,
+        int MineLevel,
+        int StonesLeft,
+        int EnemyCount,
+        bool LadderHasSpawned,
+        bool MustKillAllMonsters,
+        bool ShouldCreateLadder);
 
     private sealed class LadderMarker
     {
