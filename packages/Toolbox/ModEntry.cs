@@ -36,6 +36,7 @@ public sealed class ModEntry : Mod
         LightRadiusFeature.ApplyPatches(harmony);
         FenceDecayFeature.Initialize(() => Config);
         FenceDecayFeature.ApplyPatches(harmony);
+        ChestNameFeature.ApplyPatches(harmony);
 
         standaloneConvenientInventoryLoaded = helper.ModRegistry.IsLoaded(StandaloneConvenientInventoryId);
         if (standaloneConvenientInventoryLoaded)

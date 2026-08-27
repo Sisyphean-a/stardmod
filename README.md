@@ -8,7 +8,7 @@
 
 | 包目录 | 版本 | 作者 | UniqueID | 入口 DLL | 最低 SMAPI |
 | --- | ---: | --- | --- | --- | ---: |
-| [`Toolbox`](packages/Toolbox) | `1.8.1` | xixifu、irocendar、EnderTedi、Rakiin aKa ScheKaa | `xixifu.Toolbox` | `Toolbox.dll` | `4.0.0` |
+| [`Toolbox`](packages/Toolbox) | `1.9.0` | xixifu、irocendar、EnderTedi、Rakiin aKa ScheKaa | `xixifu.Toolbox` | `Toolbox.dll` | `4.0.0` |
 | [`HorseFollower`](packages/HorseFollower) | `1.6.0` | xixifu | `xixifu.HorseFollower` | `HorseFollower.dll` | `4.0.0` |
 | [`HotkeyViewer`](packages/HotkeyViewer) | `1.0.0` | xixifu | `xixifu.HotkeyViewer` | `HotkeyViewer.dll` | `4.0.0` |
 
@@ -43,7 +43,7 @@
 
 ### Toolbox
 
-`Toolbox`（`xixifu.Toolbox`，当前版本 `1.8.1`）整合以下功能：
+`Toolbox`（`xixifu.Toolbox`，当前版本 `1.9.0`）整合以下功能：
 
 - **动物自动抚摸**：仅在农场和畜棚中，自动抚摸扫描范围内尚未抚摸且友好度未满的动物。当前配置文件默认每 `60` 帧检查一次，扫描范围为 `3` 格。
 - **光源半径调整**：分别调整家具光源和普通物体光源的半径倍率，修改后立即刷新当前场景；默认倍率均为 `1.5`。
@@ -52,6 +52,7 @@
 - **自动开关门**：面对关闭的大门时自动打开，离开相邻格后按配置延迟关闭由本功能打开的大门，不强制关闭原本已打开的大门。
 - **镰刀收割**：允许使用真正的镰刀收割作物、花朵和地面觅食物；不支持用剑代替镰刀。
 - **快速堆叠到附近箱子**：在背包中将物品合并到配置距离内当前地点普通箱子或大箱子的已有相同堆叠；默认范围为 `14` 格，不处理冰箱等特殊库存。
+- **箱子命名**：打开箱子后点击物品菜单中的“改名”，可为普通、大型、冰箱和其他特殊玩家箱子设置名称；关闭箱子后名称会显示在箱子上方，空白名称恢复默认名称，名称会随存档和联机同步。
 - **穿行与碰撞**：允许按配置穿过作物、稻草人、洒水器、地面觅食物、茶树、树苗、果树和杂草，并可调整穿过时的减速、摇晃和声音行为。
 - **NPC 地图与小地图**：在原版世界地图和 HUD 小地图上显示 NPC、特殊商人、多人农民和农场建筑的位置，支持按任务、生日、好感度、所在位置和已交谈状态筛选。小地图默认切换键为 `OemPipe`。
 - **矿井梯子提示**：当前矿层连续破坏 `10` 块石头仍未出现梯子后，显示可能的下一层入口提示；这是固定规则，没有单独配置项。

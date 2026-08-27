@@ -31,6 +31,7 @@ internal sealed class LadderLocatorFeature
     private readonly Texture2D pixelTexture;
     private GameLocation? trackedLocation;
     private int brokenStoneCount;
+    private int? initialStonesLeft;
     private int objectListVersion;
     private LadderSearchState? lastSearchState;
     private bool revealActive;
@@ -128,6 +129,7 @@ internal sealed class LadderLocatorFeature
         }
 
         trackedLocation = mine;
+        UpdateBrokenStoneCountFromMine(mine);
         if (mine.ladderHasSpawned)
         {
             ClearMarkers();
@@ -278,6 +280,24 @@ internal sealed class LadderLocatorFeature
             mine.shouldCreateLadderOnThisLevel());
     }
 
+    // 规则：加入者可能收不到主机本地的 ObjectListChanged，使用原版同步的剩余石头数补齐本地计数。
+    private void UpdateBrokenStoneCountFromMine(MineShaft mine)
+    {
+        if (initialStonesLeft is not int initial
+            || mine.stonesLeftOnThisLevel < 0
+            || mine.stonesLeftOnThisLevel > initial)
+        {
+            return;
+        }
+
+        int syncedBrokenStoneCount = initial - mine.stonesLeftOnThisLevel;
+        if (syncedBrokenStoneCount > brokenStoneCount)
+        {
+            brokenStoneCount = syncedBrokenStoneCount;
+            objectListVersion++;
+        }
+    }
+
     private bool IsTrackedMine(MineShaft mine)
     {
         return trackedLocation is MineShaft trackedMine && trackedMine.mineLevel == mine.mineLevel;
@@ -291,6 +311,7 @@ internal sealed class LadderLocatorFeature
     private void Reset(GameLocation? location)
     {
         trackedLocation = location;
+        initialStonesLeft = location is MineShaft mine ? mine.stonesLeftOnThisLevel : null;
         brokenStoneCount = 0;
         objectListVersion = 0;
         lastSearchState = null;
