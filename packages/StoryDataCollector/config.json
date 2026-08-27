@@ -1,0 +1,6 @@
+{
+  "Enabled": true,
+  "DebugLogging": true,
+  "SaveRawEvents": true,
+  "CheckpointIntervalSeconds": 30
+}

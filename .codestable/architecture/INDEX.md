@@ -12,6 +12,7 @@ scope: workspace
 - [package:horse-follower](packages/horse-follower.md)：独立的下马后马匹跟随包，代码位置为 `packages/HorseFollower`。
 - [package:hotkey-viewer](packages/hotkey-viewer.md)：独立的快捷键查看与冲突排查包，代码位置为 `packages/HotkeyViewer`。
 - [package:portable-loading-optimizer](packages/portable-loading-optimizer.md)：面向 Windows 与 Android 的独立加载优化包，代码位置为 `packages/PortableLoadingOptimizer`。
+- [package:story-data-collector](packages/story-data-collector.md)：按时间线采集每天游戏事实的独立包，代码位置为 `packages/StoryDataCollector`。
 - 未来较大型功能或用户明确指定独立边界的功能：在 `packages/<name>` 建立独立包，并拥有独立的 SMAPI manifest、UniqueID 和输出目录。
 
 ## 共享机制

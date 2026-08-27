@@ -19,6 +19,7 @@ internal static class ChestNameFeature
     private const int MaxNameLength = 32;
     private const int RenameButtonId = 64001;
     private const int ButtonSize = 64;
+    private const int SideButtonGap = 4;
     private const float NameLabelTopOffset = 4f;
 
     private static readonly ConditionalWeakTable<ItemGrabMenu, RenameButtonState> RenameButtons = new();
@@ -108,6 +109,8 @@ internal static class ChestNameFeature
         }
 
         DrawRenameButton(b, state);
+        // Rule: ItemGrabMenu.draw 已经绘制过软件鼠标；这里补画一次，避免自定义按钮盖住鼠标指针。
+        __instance.drawMouse(b);
     }
 
     private static void PerformObjectDropInActionPostfix(Chest __instance, bool __result)
@@ -167,7 +170,7 @@ internal static class ChestNameFeature
         ClickableComponent? bottomSideButton = GetBottomSideButton(menu);
         int y = bottomSideButton is null
             ? menu.ItemsToGrabMenu.yPositionOnScreen + menu.ItemsToGrabMenu.height / 2 - ButtonSize / 2
-            : bottomSideButton.bounds.Bottom + 16;
+            : bottomSideButton.bounds.Bottom + SideButtonGap;
         state.Button.bounds = new Rectangle(x, y, ButtonSize, ButtonSize);
 
         int storageColumnCount = menu.ItemsToGrabMenu.capacity / menu.ItemsToGrabMenu.rows;
@@ -210,7 +213,7 @@ internal static class ChestNameFeature
             state.Button.bounds.Height,
             background,
             4f,
-            false);
+            true);
 
         Vector2 textSize = Game1.smallFont.MeasureString(RenameButtonText);
         Vector2 textPosition = new(

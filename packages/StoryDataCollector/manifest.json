@@ -1,0 +1,10 @@
+{
+  "Name": "故事数据采集器",
+  "Author": "xixifu",
+  "Version": "1.0.0",
+  "Description": "按时间线采集每天的地点、社交、交易和重要状态变化，为后续故事生成保留可信的游戏事实。",
+  "UniqueID": "xixifu.StoryDataCollector",
+  "EntryDll": "StoryDataCollector.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}
