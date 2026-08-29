@@ -11,8 +11,6 @@ public sealed class GameEvent
 
     public int Time { get; set; }
 
-    public DateTime? RealTimestamp { get; set; }
-
     public string Type { get; set; } = "";
 
     public string? Location { get; set; }
@@ -23,6 +21,7 @@ public sealed class GameEvent
 
     public string? Target { get; set; }
 
+    // Raw collector details remain extensible; NarrativeDailyInput is the typed AI contract.
     public Dictionary<string, object?> Details { get; set; } = new();
 
     public int Importance { get; set; }

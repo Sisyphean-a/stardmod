@@ -4,17 +4,24 @@ namespace StoryDataCollector;
 
 public sealed class DailyRecord
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
 
     public DailyDate Date { get; set; } = new();
 
     public DailyContext Context { get; set; } = new();
 
+    public PlayerDayState? StartState { get; set; }
+
+    public PlayerDayState? EndState { get; set; }
+
     public List<LocationStay> LocationStays { get; set; } = new();
 
     public List<GameEvent> Events { get; set; } = new();
 
-    public List<GameEvent>? DebugRawEvents { get; set; }
+    // Facts omitted only because the bounded daily archive was full.
+    public Dictionary<string, int> DroppedEventCounts { get; set; } = new();
+
+    public int DroppedLocationStays { get; set; }
 
     public Dictionary<string, object?> SummaryStats { get; set; } = new();
 
@@ -53,4 +60,31 @@ public sealed class DailyContext
     public string? Spouse { get; set; }
 
     public int FarmType { get; set; }
+}
+
+public sealed class PlayerDayState
+{
+    public int Time { get; set; }
+
+    public int Money { get; set; }
+
+    public int Health { get; set; }
+
+    public string Location { get; set; } = "Unknown";
+
+    public string LocationDisplayName { get; set; } = "Unknown";
+
+    // Two bounded snapshots reveal results across gameplay systems without recording every action.
+    public List<InventoryStack> Inventory { get; set; } = new();
+}
+
+public sealed class InventoryStack
+{
+    public string ItemId { get; set; } = "Unknown";
+
+    public string ItemName { get; set; } = "Unknown";
+
+    public int Quality { get; set; }
+
+    public int Count { get; set; }
 }

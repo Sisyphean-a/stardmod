@@ -1,6 +1,8 @@
 {
   "Enabled": true,
-  "DebugLogging": true,
-  "SaveRawEvents": true,
-  "CheckpointIntervalSeconds": 30
+  "DebugLogging": false,
+  "CheckpointIntervalSeconds": 30,
+  "MaxEventsPerDay": 512,
+  "MaxLocationStaysPerDay": 256,
+  "MaxNarrativeFacts": 24
 }
