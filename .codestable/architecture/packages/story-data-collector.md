@@ -4,7 +4,7 @@ scope: package:story-data-collector
 
 # 故事数据采集器
 
-`packages/StoryDataCollector` 是独立的 Stardew Valley / SMAPI 数据采集 mod，运行时身份为 `xixifu.StoryDataCollector`，入口程序集为 `StoryDataCollector.dll`。它只负责采集和保存游戏事实，不调用 AI、不生成故事、不提供游戏内故事 UI。
+`packages/StoryDataCollector` 是独立的 Stardew Valley / SMAPI 数据采集 mod，运行时身份为 `xixifu.StoryDataCollector`，入口程序集为 `StoryDataCollector.dll`。它当前只负责采集和保存游戏事实，不调用 AI、不生成故事、不提供游戏内故事 UI；长期产品主线由[连续故事日记上下文](../../requirements/contexts/story-data-collector.md)定义，本页只描述现行代码边界。
 
 ## 职责
 
