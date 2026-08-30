@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
+using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Menus;
@@ -67,6 +68,33 @@ internal static class HarmonyPatches
                 new[] { typeof(ISalable), typeof(ISalable), typeof(int), typeof(int), typeof(int) }),
             prefixName: nameof(ShopPurchasePrefix),
             postfixName: nameof(ShopPurchasePostfix));
+        TryPatch(
+            harmony,
+            "Event.tryEventCommand",
+            AccessTools.Method(
+                typeof(Event),
+                nameof(Event.tryEventCommand),
+                new[] { typeof(GameLocation), typeof(GameTime), typeof(string[]) }),
+            postfixName: nameof(StoryEventCommandPostfix));
+        TryPatch(
+            harmony,
+            "Event.skipEvent",
+            AccessTools.Method(typeof(Event), nameof(Event.skipEvent), Type.EmptyTypes),
+            postfixName: nameof(StoryEventSkipPostfix));
+        TryPatch(
+            harmony,
+            "Event.exitEvent",
+            AccessTools.Method(typeof(Event), nameof(Event.exitEvent), Type.EmptyTypes),
+            postfixName: nameof(StoryEventExitPostfix));
+        TryPatch(
+            harmony,
+            "Event.answerDialogue",
+            AccessTools.Method(
+                typeof(Event),
+                nameof(Event.answerDialogue),
+                new[] { typeof(string), typeof(int) }),
+            prefixName: nameof(StoryEventAnswerPrefix),
+            postfixName: nameof(StoryEventAnswerPostfix));
     }
 
     private static void TryPatch(
@@ -238,6 +266,85 @@ internal static class HarmonyPatches
         catch (Exception ex)
         {
             LogCallbackFailure("Farmer.passOutFromTired 回调", ex);
+        }
+    }
+
+    private static void StoryEventCommandPostfix(
+        Event __instance,
+        string[] args,
+        bool __runOriginal)
+    {
+        try
+        {
+            if (__runOriginal && Context.IsWorldReady)
+                collector?.RecordStoryEventCommand(__instance, args);
+        }
+        catch (Exception ex)
+        {
+            LogCallbackFailure("Event.tryEventCommand 回调", ex);
+        }
+    }
+
+    private static void StoryEventSkipPostfix(Event __instance, bool __runOriginal)
+    {
+        try
+        {
+            if (__runOriginal && Context.IsWorldReady)
+                collector?.MarkStoryEventEnding(__instance, skipped: true);
+        }
+        catch (Exception ex)
+        {
+            LogCallbackFailure("Event.skipEvent 回调", ex);
+        }
+    }
+
+    private static void StoryEventExitPostfix(Event __instance, bool __runOriginal)
+    {
+        try
+        {
+            if (__runOriginal && Context.IsWorldReady)
+                collector?.MarkStoryEventEnding(__instance, skipped: false);
+        }
+        catch (Exception ex)
+        {
+            LogCallbackFailure("Event.exitEvent 回调", ex);
+        }
+    }
+
+    private static void StoryEventAnswerPrefix(Event __instance, out string? __state)
+    {
+        try
+        {
+            __state = __instance.GetCurrentCommand();
+        }
+        catch (Exception ex)
+        {
+            __state = null;
+            LogCallbackFailure("Event.answerDialogue 前置回调", ex);
+        }
+    }
+
+    private static void StoryEventAnswerPostfix(
+        Event __instance,
+        string questionKey,
+        int answerChoice,
+        bool __runOriginal,
+        string? __state)
+    {
+        try
+        {
+            if (__runOriginal && Context.IsWorldReady)
+            {
+                collector?.RecordStoryEventChoice(
+                    __instance,
+                    questionKey,
+                    answerChoice,
+                    __state);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogCallbackFailure("Event.answerDialogue 后置回调", ex);
         }
     }
 

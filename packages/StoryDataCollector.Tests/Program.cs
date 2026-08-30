@@ -10,6 +10,7 @@ static class Program
         try
         {
             NarrativeProjectionIsBoundedAndAggregated();
+            StoryEventsExposeNarrativeMeaningAndWinTheBudget();
             EventBudgetRetainsHigherValueFacts();
             CheckpointValidationRejectsMalformedSnapshots();
             ConfigurationClampsPersistenceBudgets();
@@ -52,6 +53,76 @@ static class Program
         Require(narrowInput.Facts.Any(fact => fact.Kind == "PlayerPassedOut"), "High-importance setbacks must survive selection.");
     }
 
+    private static void StoryEventsExposeNarrativeMeaningAndWinTheBudget()
+    {
+        string[] commands =
+        {
+            "none",
+            "10 10",
+            "Shane 8 8 2 farmer 10 8 0 Emily 12 8 3",
+            "skippable",
+            "speak Shane \"We're shooting a Joja Cola commercial today.\"",
+            "animate Shane false true 100 5 6",
+            "playSound cameraNoise",
+            "quickQuestion \"Will you join the filming?#Yes, I'll take part.#No, thanks.\""
+        };
+        StoryEventScriptSummary summary = StoryEventScriptParser.Extract(commands);
+        Require(summary.Participants.SequenceEqual(new[] { "Shane", "Player", "Emily" }), "Story script participants must include the player and NPC actors in scene order.");
+        Require(summary.PlayerParticipated, "The farmer actor must mark player participation.");
+        Require(summary.DialogueHighlights.Any(line => line.Contains("Joja Cola commercial", StringComparison.Ordinal)), "Story dialogue must retain the meaning of the cutscene.");
+        Require(summary.ActionCues.Any(line => line.Contains("cameraNoise", StringComparison.Ordinal)), "Story actions must retain meaningful scene cues.");
+        StoryEventScriptSummary bounded = StoryEventScriptParser.Extract(
+            commands.Concat(Enumerable.Range(0, 30).Select(index => $"speak Shane \"extra dialogue {index}\"")));
+        Require(bounded.DialogueHighlights.Count == StoryEventScriptParser.MaxDialogueHighlights, "Story dialogue extraction must obey its hard bound.");
+        Require(
+            StoryEventScriptParser.ExtractSelectedChoice(commands[^1], 0) == "Yes, I'll take part.",
+            "The selected quick-question answer must retain its displayed text.");
+        const string normalQuestion = "question filmingAnswer \"Where should we film?#Outside Joja.#Inside the store.\"";
+        Require(
+            StoryEventScriptParser.ExtractQuestionText(normalQuestion) == "Where should we film?"
+            && StoryEventScriptParser.ExtractSelectedChoice(normalQuestion, 1) == "Inside the store.",
+            "Normal questions must omit the internal key and retain the selected displayed text.");
+
+        StoryEventScriptSummary executed = StoryEventScriptParser.CreateInitial(commands);
+        StoryEventScriptParser.ObserveCommand(executed, new[] { "speak", "Shane", "Thanks for joining the commercial." });
+        Require(
+            executed.DialogueHighlights.Single().Contains("Thanks for joining", StringComparison.Ordinal),
+            "A dynamically inserted selected branch must be captured when its command actually executes.");
+        Require(
+            !executed.DialogueHighlights.Any(line => line.Contains("No, thanks", StringComparison.Ordinal)),
+            "Unexecuted question branches must not be recorded as outcomes.");
+
+        DailyRecord record = CreateRecord();
+        record.Events.Add(Event(
+            "StoryEvent",
+            900,
+            1,
+            importance: 5,
+            details: new()
+            {
+                ["eventId"] = "shane-commercial",
+                ["endTime"] = 930,
+                ["participants"] = summary.Participants,
+                ["dialogueHighlights"] = summary.DialogueHighlights,
+                ["actionCues"] = summary.ActionCues,
+                ["playerChoices"] = new List<string> { "Will you join the filming? → Yes, I'll take part." },
+                ["playerParticipated"] = true,
+                ["completed"] = true,
+                ["skipped"] = false
+            }));
+        record.Events.Add(Event("PlayerPassedOut", 2500, 2, importance: 4));
+        record.LocationStays.Add(new LocationStay { Location = "Town", LocationDisplayName = "Pelican Town", EnterTime = 800, LeaveTime = 1200, Duration = 240 });
+
+        NarrativeDailyInput input = new NarrativeProjectionBuilder().Build(record, 1);
+        NarrativeFact story = RequireSingle(input.Facts, fact => fact.Kind == "StoryEvent");
+        Require(input.SchemaVersion == 2, "The expanded AI story-event contract must use schema version 2.");
+        Require(story.LastTime == 930, "Story facts must retain the event end time.");
+        Require(story.Participants.SequenceEqual(summary.Participants), "AI input must receive bounded story participants.");
+        Require(story.PlayerParticipated == true && story.Completed == true && story.Skipped == false, "AI input must distinguish player participation and event completion.");
+        Require(story.DialogueHighlights.Any(line => line.Contains("Joja Cola commercial", StringComparison.Ordinal)), "AI input must carry semantic dialogue rather than only an event ID.");
+        Require(story.PlayerChoices.Single().Contains("Yes, I'll take part", StringComparison.Ordinal), "AI input must carry the selected answer text.");
+    }
+
     private static void EventBudgetRetainsHigherValueFacts()
     {
         DailyRecord record = CreateRecord();
@@ -77,6 +148,35 @@ static class Program
 
         checkpoint.Events.Add(Event("Purchase", 900, 1));
         Require(!CheckpointValidator.IsValid(checkpoint), "Duplicate event IDs must reject a checkpoint before recovery writes raw data.");
+
+        List<string> participants = Enumerable.Range(0, StoryEventScriptParser.MaxParticipants)
+            .Select(index => $"Actor{index}")
+            .ToList();
+        checkpoint.Events = new List<GameEvent>
+        {
+            Event(
+                "StoryEvent",
+                1000,
+                2,
+                importance: 5,
+                details: new()
+                {
+                    ["eventId"] = "story-event",
+                    ["sourceAsset"] = "Data/Events/Town",
+                    ["participants"] = participants,
+                    ["dialogueHighlights"] = new List<string>(),
+                    ["actionCues"] = new List<string>(),
+                    ["playerChoices"] = new List<string>(),
+                    ["playerParticipated"] = true,
+                    ["completed"] = true,
+                    ["skipped"] = false,
+                    ["endTime"] = 1030
+                })
+        };
+        checkpoint.LastSequence = 2;
+        Require(CheckpointValidator.IsValid(checkpoint), "A bounded story event checkpoint must validate.");
+        participants.Add("ActorOverflow");
+        Require(!CheckpointValidator.IsValid(checkpoint), "Unbounded story details must reject a checkpoint before recovery writes raw data.");
     }
 
     private static void ConfigurationClampsPersistenceBudgets()
@@ -98,6 +198,7 @@ static class Program
     private static void AiContractDoesNotExposeRawEventFields()
     {
         Require(typeof(NarrativeFact).GetProperty(nameof(GameEvent.Id)) is null, "AI facts must not expose raw event IDs.");
+        Require(typeof(NarrativeFact).GetProperty("EventId") is null, "AI story facts must expose meaning, not internal event IDs.");
         Require(typeof(NarrativeFact).GetProperty(nameof(GameEvent.Details)) is null, "AI facts must not expose untyped raw details.");
         Require(typeof(NarrativePlayerState).GetProperty(nameof(PlayerDayState.Inventory)) is null, "AI state must not copy complete inventory snapshots outside the fact budget.");
         Require(typeof(GameEvent).GetProperty("RealTimestamp") is null, "Debug configuration must not alter the core event schema.");

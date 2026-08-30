@@ -15,7 +15,7 @@ namespace Toolbox;
 internal sealed class LadderLocatorFeature
 {
     private const int RevealAfterBrokenStones = 10;
-    private const int GuaranteedLadderAfterBrokenStones = RevealAfterBrokenStones + 1;
+    private const int GuaranteedDescentAfterBrokenStones = RevealAfterBrokenStones + 1;
     private static readonly Color[] RainbowPalette =
     {
         Color.Red,
@@ -28,12 +28,16 @@ internal sealed class LadderLocatorFeature
 
     private readonly IModHelper helper;
     private readonly Dictionary<Vector2, LadderMarker> ladderMarkers = new();
+    private readonly HashSet<Vector2> brokenStoneTiles = new();
     private readonly Texture2D pixelTexture;
     private GameLocation? trackedLocation;
     private int brokenStoneCount;
     private int? initialStonesLeft;
     private int objectListVersion;
+    private Vector2? pendingGuaranteedDescentTile;
+    private int pendingGuaranteeEarliestTick = -1;
     private LadderSearchState? lastSearchState;
+    private bool descentHasSpawned;
     private bool revealActive;
 
     internal LadderLocatorFeature(IModHelper helper)
@@ -77,7 +81,7 @@ internal sealed class LadderLocatorFeature
             trackedLocation = mine;
 
         objectListVersion++;
-        Vector2? guaranteedLadderTile = null;
+        Vector2? guaranteedDescentTile = null;
         int removedStones = 0;
         foreach (KeyValuePair<Vector2, StardewValley.Object> removed in e.Removed)
         {
@@ -85,25 +89,27 @@ internal sealed class LadderLocatorFeature
                 continue;
 
             removedStones++;
+            brokenStoneTiles.Add(removed.Key);
             brokenStoneCount++;
-            if (brokenStoneCount == GuaranteedLadderAfterBrokenStones)
-                guaranteedLadderTile = removed.Key;
+            if (brokenStoneCount == GuaranteedDescentAfterBrokenStones)
+                guaranteedDescentTile = removed.Key;
         }
 
         if (removedStones <= 0)
             return;
 
-        if (mine.ladderHasSpawned)
+        if (HasDescent(mine))
         {
+            ClearPendingGuarantee();
             ClearMarkers();
             return;
         }
 
-        if (guaranteedLadderTile is Vector2 tile
-            && mine.shouldCreateLadderOnThisLevel()
-            && Game1.IsMasterGame)
+        if (guaranteedDescentTile is Vector2 tile)
         {
-            mine.createLadderDown((int)tile.X, (int)tile.Y);
+            // Flow：等原版的下降点网络事件落地一帧，再决定是否补生成，避免把同格的洞覆盖成楼梯。
+            pendingGuaranteedDescentTile = tile;
+            pendingGuaranteeEarliestTick = Game1.ticks + 1;
             ClearMarkers();
             return;
         }
@@ -119,8 +125,11 @@ internal sealed class LadderLocatorFeature
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
-        if (!e.IsMultipleOf(5) || Game1.currentLocation is not MineShaft mine)
+        if (Game1.currentLocation is not MineShaft mine
+            || (!e.IsMultipleOf(5) && pendingGuaranteedDescentTile is null))
+        {
             return;
+        }
 
         if (!IsTrackedMine(mine))
         {
@@ -130,11 +139,36 @@ internal sealed class LadderLocatorFeature
 
         trackedLocation = mine;
         UpdateBrokenStoneCountFromMine(mine);
-        if (mine.ladderHasSpawned)
+        if (HasDescent(mine))
         {
+            ClearPendingGuarantee();
             ClearMarkers();
+            return;
         }
-        else if (brokenStoneCount >= RevealAfterBrokenStones
+
+        if (pendingGuaranteedDescentTile is Vector2 tile)
+        {
+            if (Game1.ticks < pendingGuaranteeEarliestTick)
+                return;
+
+            if (!mine.shouldCreateLadderOnThisLevel())
+            {
+                ClearPendingGuarantee();
+                ClearMarkers();
+                return;
+            }
+
+            if (!Game1.IsMasterGame)
+                return;
+
+            ClearPendingGuarantee();
+            mine.createLadderDown((int)tile.X, (int)tile.Y);
+            descentHasSpawned = true;
+            ClearMarkers();
+            return;
+        }
+
+        if (brokenStoneCount >= RevealAfterBrokenStones
             && (lastSearchState is null || !lastSearchState.Equals(GetSearchState(mine))))
         {
             RefreshMarkers(mine);
@@ -151,7 +185,7 @@ internal sealed class LadderLocatorFeature
         ladderMarkers.Clear();
         revealActive = false;
 
-        if (mine.ladderHasSpawned
+        if (HasDescent(mine)
             || searchState.MustKillAllMonsters
             || !searchState.ShouldCreateLadder)
         {
@@ -159,12 +193,15 @@ internal sealed class LadderLocatorFeature
         }
 
         int stonesLeft = mine.stonesLeftOnThisLevel;
+        int stonesLeftAfterBreak = Math.Max(0, stonesLeft - 1);
         double chance = 0.02
-            + 1.0 / Math.Max(1, stonesLeft)
+            + 1.0 / Math.Max(1, stonesLeftAfterBreak)
             + Game1.player.LuckLevel / 100.0
             + Game1.player.DailyLuck / 5.0;
         if (mine.EnemyCount == 0)
             chance += 0.04;
+        if (Game1.player.hasBuff("dwarfStatue_1"))
+            chance *= 1.25;
 
         foreach ((Vector2 tile, StardewValley.Object obj) in mine.Objects.Pairs)
         {
@@ -314,8 +351,55 @@ internal sealed class LadderLocatorFeature
         initialStonesLeft = location is MineShaft mine ? mine.stonesLeftOnThisLevel : null;
         brokenStoneCount = 0;
         objectListVersion = 0;
+        brokenStoneTiles.Clear();
+        ClearPendingGuarantee();
         lastSearchState = null;
+        descentHasSpawned = location is MineShaft currentMine && ContainsDescentTile(currentMine);
         ClearMarkers();
+    }
+
+    private bool HasDescent(MineShaft mine)
+    {
+        if (descentHasSpawned || mine.ladderHasSpawned)
+        {
+            descentHasSpawned = true;
+            return true;
+        }
+
+        foreach (Vector2 tile in brokenStoneTiles)
+        {
+            if (IsDescentTileIndex(mine.getTileIndexAt((int)tile.X, (int)tile.Y, "Buildings", "mine")))
+            {
+                descentHasSpawned = true;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsDescentTile(MineShaft mine)
+    {
+        int width = mine.Map.Layers[0].LayerWidth;
+        int height = mine.Map.Layers[0].LayerHeight;
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                if (IsDescentTileIndex(mine.getTileIndexAt(x, y, "Buildings", "mine")))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsDescentTileIndex(int tileIndex) => tileIndex is 173 or 174;
+
+    private void ClearPendingGuarantee()
+    {
+        pendingGuaranteedDescentTile = null;
+        pendingGuaranteeEarliestTick = -1;
     }
 
     private void ClearMarkers()

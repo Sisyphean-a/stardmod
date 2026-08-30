@@ -5,7 +5,7 @@ namespace StoryDataCollector;
 // This is the only persisted contract intended for a future story-generation client.
 public sealed class NarrativeDailyInput
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
 
     public DailyDate Date { get; set; } = new();
 
@@ -68,6 +68,34 @@ public sealed class NarrativeFact
     public int? MoneyChange { get; set; }
 
     public int? HealthChange { get; set; }
+
+    public List<string> Participants { get; set; } = new();
+
+    public List<string> DialogueHighlights { get; set; } = new();
+
+    public List<string> ActionCues { get; set; } = new();
+
+    public List<string> PlayerChoices { get; set; } = new();
+
+    public bool? PlayerParticipated { get; set; }
+
+    public bool? Completed { get; set; }
+
+    public bool? Skipped { get; set; }
+
+    public bool ShouldSerializeParticipants() => Participants.Count > 0;
+
+    public bool ShouldSerializeDialogueHighlights() => DialogueHighlights.Count > 0;
+
+    public bool ShouldSerializeActionCues() => ActionCues.Count > 0;
+
+    public bool ShouldSerializePlayerChoices() => PlayerChoices.Count > 0;
+
+    public bool ShouldSerializePlayerParticipated() => PlayerParticipated.HasValue;
+
+    public bool ShouldSerializeCompleted() => Completed.HasValue;
+
+    public bool ShouldSerializeSkipped() => Skipped.HasValue;
 }
 
 public sealed class NarrativeInputBudget

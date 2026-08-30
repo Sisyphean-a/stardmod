@@ -10,6 +10,7 @@
     <Compile Include="..\StoryDataCollector\LocationStay.cs" Link="LocationStay.cs" />
     <Compile Include="..\StoryDataCollector\NarrativeInput.cs" Link="NarrativeInput.cs" />
     <Compile Include="..\StoryDataCollector\NarrativeProjectionBuilder.cs" Link="NarrativeProjectionBuilder.cs" />
+    <Compile Include="..\StoryDataCollector\StoryEventScriptParser.cs" Link="StoryEventScriptParser.cs" />
     <Compile Include="..\StoryDataCollector\DailyEventBudget.cs" Link="DailyEventBudget.cs" />
     <Compile Include="..\StoryDataCollector\DailyCheckpoint.cs" Link="DailyCheckpoint.cs" />
     <Compile Include="..\StoryDataCollector\CheckpointValidator.cs" Link="CheckpointValidator.cs" />

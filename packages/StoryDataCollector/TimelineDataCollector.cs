@@ -20,6 +20,7 @@ internal sealed class TimelineDataCollector
     private readonly Dictionary<string, int> talkCounts = new(StringComparer.Ordinal);
 
     private DailyRecord? record;
+    private ActiveStoryEventCapture? activeStoryEvent;
     private LocationStay? activeLocationStay;
     private bool activeLocationStayIsStored;
     private string? saveId;
@@ -89,6 +90,8 @@ internal sealed class TimelineDataCollector
         if (record is null || finalized)
             return;
 
+        TrackStoryEvent();
+        FinalizeActiveStoryEvent(completed: activeStoryEvent?.CompletionObserved == true);
         EnsureCurrentLocation();
         CloseActiveLocationStay(Game1.timeOfDay);
         record.EndState = CaptureDayState();
@@ -106,7 +109,10 @@ internal sealed class TimelineDataCollector
     internal void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
     {
         if (record is not null && !finalized)
+        {
+            FinalizeActiveStoryEvent(completed: false);
             WriteCheckpoint("returned-to-title", force: true);
+        }
 
         ResetState();
         LogDebug("[Lifecycle] ReturnedToTitle：已清理当天内存状态。");
@@ -124,6 +130,7 @@ internal sealed class TimelineDataCollector
             return;
 
         EnsureCurrentLocation();
+        TrackStoryEvent();
         TrackPlayerState();
 
         if (!e.IsOneSecond)
@@ -150,6 +157,64 @@ internal sealed class TimelineDataCollector
             return;
 
         SwitchLocation(e.NewLocation, Game1.timeOfDay);
+    }
+
+    internal void MarkStoryEventEnding(Event storyEvent, bool skipped)
+    {
+        if (!CanRecord())
+            return;
+
+        EnsureActiveStoryEvent(storyEvent);
+        if (activeStoryEvent is null || !ReferenceEquals(activeStoryEvent.Event, storyEvent))
+            return;
+
+        UpdateStoryEventParticipants(activeStoryEvent);
+        activeStoryEvent.CompletionObserved = true;
+        activeStoryEvent.Skipped |= skipped;
+    }
+
+    internal void RecordStoryEventChoice(Event storyEvent, string questionKey, int answerChoice, string? command)
+    {
+        if (!CanRecord())
+            return;
+
+        EnsureActiveStoryEvent(storyEvent);
+        if (activeStoryEvent is null || !ReferenceEquals(activeStoryEvent.Event, storyEvent))
+            return;
+
+        string? selected = StoryEventScriptParser.ExtractSelectedChoice(command, answerChoice);
+        if (string.IsNullOrWhiteSpace(selected))
+            selected = $"选项 {answerChoice + 1}";
+        string question = StoryEventScriptParser.ExtractQuestionText(command)
+            ?? (string.IsNullOrWhiteSpace(questionKey) ? "剧情选择" : questionKey);
+        AddBoundedUnique(
+            activeStoryEvent.PlayerChoices,
+            $"{question} → {selected}",
+            StoryEventScriptParser.MaxPlayerChoices);
+    }
+
+    internal void RecordStoryEventCommand(Event storyEvent, IReadOnlyList<string> commandTokens)
+    {
+        if (!CanRecord() || commandTokens.Count == 0)
+            return;
+
+        EnsureActiveStoryEvent(storyEvent);
+        ActiveStoryEventCapture? capture = activeStoryEvent;
+        if (capture is null || !ReferenceEquals(capture.Event, storyEvent))
+            return;
+
+        string commandKey = string.Join(
+            '\u001f',
+            commandTokens.Take(128).Select(token => LimitText(token, 256) ?? ""));
+        commandKey = LimitText(commandKey, 2048) ?? "";
+        if (capture.ObservedCommands.Count >= StoryEventScriptParser.MaxObservedCommands
+            || !capture.ObservedCommands.Add(commandKey))
+        {
+            return;
+        }
+
+        StoryEventScriptParser.ObserveCommand(capture.Summary, commandTokens);
+        UpdateStoryEventParticipants(capture);
     }
 
     internal void RecordNpcTalk(NPC npc, GameLocation? location, int invocationTick)
@@ -557,6 +622,115 @@ internal sealed class TimelineDataCollector
         playerSnapshotReady = true;
     }
 
+    private void TrackStoryEvent()
+    {
+        Event? current = Game1.CurrentEvent;
+        if (activeStoryEvent is not null && !ReferenceEquals(activeStoryEvent.Event, current))
+            FinalizeActiveStoryEvent(completed: activeStoryEvent.CompletionObserved);
+
+        if (current is null)
+            return;
+
+        EnsureActiveStoryEvent(current);
+        if (activeStoryEvent is not null)
+            UpdateStoryEventParticipants(activeStoryEvent);
+    }
+
+    private void EnsureActiveStoryEvent(Event storyEvent)
+    {
+        if (activeStoryEvent is not null && ReferenceEquals(activeStoryEvent.Event, storyEvent))
+            return;
+        if (activeStoryEvent is not null)
+            FinalizeActiveStoryEvent(completed: activeStoryEvent.CompletionObserved);
+
+        StoryEventScriptSummary summary = StoryEventScriptParser.CreateInitial(storyEvent.eventCommands);
+        activeStoryEvent = new ActiveStoryEventCapture(
+            storyEvent,
+            Game1.timeOfDay,
+            Game1.currentLocation,
+            summary,
+            storyEvent.id,
+            storyEvent.fromAssetName,
+            storyEvent.isFestival);
+        UpdateStoryEventParticipants(activeStoryEvent);
+        LogDebug($"[Story] {FormatTime(activeStoryEvent.StartTime)} StoryEventStarted id={activeStoryEvent.EventId} participants={string.Join(",", activeStoryEvent.Summary.Participants)}");
+    }
+
+    private static void UpdateStoryEventParticipants(ActiveStoryEventCapture capture)
+    {
+        foreach (NPC actor in capture.Event.actors)
+        {
+            AddBoundedUnique(
+                capture.Summary.Participants,
+                StoryEventScriptParser.NormalizeParticipant(actor.Name),
+                StoryEventScriptParser.MaxParticipants);
+        }
+        foreach (Farmer farmer in capture.Event.farmerActors)
+        {
+            if (ReferenceEquals(farmer, Game1.player) || farmer.IsLocalPlayer)
+            {
+                AddBoundedUnique(capture.Summary.Participants, PlayerActor, StoryEventScriptParser.MaxParticipants);
+                capture.Summary.PlayerParticipated = true;
+            }
+        }
+        capture.Summary.PlayerParticipated |= capture.Summary.Participants.Contains(PlayerActor, StringComparer.Ordinal);
+    }
+
+    private void FinalizeActiveStoryEvent(bool completed)
+    {
+        ActiveStoryEventCapture? capture = activeStoryEvent;
+        if (capture is null)
+            return;
+        activeStoryEvent = null;
+
+        UpdateStoryEventParticipants(capture);
+        List<string> participants = capture.Summary.Participants
+            .Take(StoryEventScriptParser.MaxParticipants)
+            .ToList();
+        string? primaryNpc = participants.FirstOrDefault(participant => !string.Equals(participant, PlayerActor, StringComparison.Ordinal));
+        AddEvent(
+            "StoryEvent",
+            capture.Location,
+            PlayerActor,
+            primaryNpc,
+            new Dictionary<string, object?>
+            {
+                ["eventId"] = LimitText(capture.EventId, 120) ?? "-1",
+                ["sourceAsset"] = LimitText(capture.SourceAsset, 160),
+                ["isFestival"] = capture.IsFestival,
+                ["participants"] = participants,
+                ["dialogueHighlights"] = capture.Summary.DialogueHighlights.Take(StoryEventScriptParser.MaxDialogueHighlights).ToList(),
+                ["actionCues"] = capture.Summary.ActionCues.Take(StoryEventScriptParser.MaxActionCues).ToList(),
+                ["playerChoices"] = capture.PlayerChoices.Take(StoryEventScriptParser.MaxPlayerChoices).ToList(),
+                ["playerParticipated"] = capture.Summary.PlayerParticipated,
+                ["completed"] = completed || capture.CompletionObserved,
+                ["skipped"] = capture.Skipped,
+                ["endTime"] = Game1.timeOfDay
+            },
+            importance: 5,
+            evidence: "Observed",
+            recordedTime: capture.StartTime);
+    }
+
+    private static void AddBoundedUnique(ICollection<string> values, string? value, int maximumCount)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || values.Count >= maximumCount
+            || values.Contains(value, StringComparer.Ordinal))
+        {
+            return;
+        }
+        values.Add(value);
+    }
+
+    private static string? LimitText(string? value, int maximumLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        string trimmed = value.Trim();
+        return trimmed.Length <= maximumLength ? trimmed : trimmed[..maximumLength];
+    }
+
     private int ConsumeKnownMoneyDelta(int observedDelta)
     {
         if (pendingKnownMoneyDelta == 0)
@@ -594,7 +768,8 @@ internal sealed class TimelineDataCollector
         string? target,
         Dictionary<string, object?> details,
         int importance,
-        string evidence)
+        string evidence,
+        int? recordedTime = null)
     {
         if (!CanRecord())
             return;
@@ -603,7 +778,7 @@ internal sealed class TimelineDataCollector
         GameEvent gameEvent = new()
         {
             Day = record!.Date.Day,
-            Time = Game1.timeOfDay,
+            Time = recordedTime ?? Game1.timeOfDay,
             Type = type,
             Location = locationInfo.Id,
             LocationDisplayName = locationInfo.DisplayName,
@@ -733,6 +908,7 @@ internal sealed class TimelineDataCollector
             ["unknownEvents"] = dailyRecord.Events.Count(gameEvent => gameEvent.Evidence == "Unknown"),
             ["socialEvents"] = dailyRecord.Events.Count(IsSocialEvent),
             ["combatEvents"] = dailyRecord.Events.Count(IsCombatEvent),
+            ["storyEvents"] = dailyRecord.Events.Count(gameEvent => gameEvent.Type == "StoryEvent"),
             ["narrativeFacts"] = narrativeInput?.Facts.Count ?? 0,
             ["narrativeBudget"] = config.MaxNarrativeFacts,
             ["complete"] = dailyRecord.IsComplete
@@ -1087,6 +1263,7 @@ internal sealed class TimelineDataCollector
     private void ResetState()
     {
         record = null;
+        activeStoryEvent = null;
         activeLocationStay = null;
         activeLocationStayIsStored = false;
         saveId = null;
@@ -1121,6 +1298,7 @@ internal sealed class TimelineDataCollector
         {
             "NpcTalk" or "GiftGiven" => "[Social]",
             "Purchase" or "MoneyChanged" => "[Economy]",
+            "StoryEvent" => "[Story]",
             _ => "[Timeline]"
         };
         string target = gameEvent.Target is null ? "" : $" target={gameEvent.Target}";
@@ -1254,6 +1432,49 @@ internal sealed class TimelineDataCollector
             IsTemporary = stay.IsTemporary,
             Evidence = stay.Evidence
         };
+    }
+
+    private sealed class ActiveStoryEventCapture
+    {
+        internal ActiveStoryEventCapture(
+            Event storyEvent,
+            int startTime,
+            GameLocation? location,
+            StoryEventScriptSummary summary,
+            string? eventId,
+            string? sourceAsset,
+            bool isFestival)
+        {
+            Event = storyEvent;
+            StartTime = startTime;
+            Location = location;
+            Summary = summary;
+            EventId = eventId;
+            SourceAsset = sourceAsset;
+            IsFestival = isFestival;
+        }
+
+        internal Event Event { get; }
+
+        internal int StartTime { get; }
+
+        internal GameLocation? Location { get; }
+
+        internal StoryEventScriptSummary Summary { get; }
+
+        internal string? EventId { get; }
+
+        internal string? SourceAsset { get; }
+
+        internal bool IsFestival { get; }
+
+        internal List<string> PlayerChoices { get; } = new();
+
+        internal HashSet<string> ObservedCommands { get; } = new(StringComparer.Ordinal);
+
+        internal bool CompletionObserved { get; set; }
+
+        internal bool Skipped { get; set; }
     }
 
     private readonly record struct LocationInfo(string Id, string DisplayName);

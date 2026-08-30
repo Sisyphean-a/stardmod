@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
@@ -49,7 +51,7 @@ internal static class ChestNameFeature
                 typeof(ItemGrabMenu),
                 nameof(ItemGrabMenu.draw),
                 new[] { typeof(SpriteBatch) })!,
-            postfix: new HarmonyMethod(typeof(ChestNameFeature), nameof(DrawPostfix)));
+            transpiler: new HarmonyMethod(typeof(ChestNameFeature), nameof(DrawTranspiler)));
         harmony.Patch(
             AccessTools.Method(
                 typeof(Chest),
@@ -99,18 +101,44 @@ internal static class ChestNameFeature
         TryGetRenameButton(__instance, out _, out _);
     }
 
-    private static void DrawPostfix(ItemGrabMenu __instance, SpriteBatch b)
+    private static IEnumerable<CodeInstruction> DrawTranspiler(IEnumerable<CodeInstruction> instructions)
     {
-        if (!TryGetRenameButton(__instance, out Chest? chest, out RenameButtonState? state)
-            || chest is null
-            || state is null)
+        List<CodeInstruction> result = instructions.ToList();
+        FieldInfo hoverTextField = AccessTools.Field(typeof(MenuWithInventory), nameof(MenuWithInventory.hoverText))
+            ?? throw new MissingFieldException(typeof(MenuWithInventory).FullName, nameof(MenuWithInventory.hoverText));
+        MethodInfo drawButtonMethod = AccessTools.Method(
+            typeof(ChestNameFeature),
+            nameof(DrawRenameButtonInMenu))
+            ?? throw new MissingMethodException(typeof(ChestNameFeature).FullName, nameof(DrawRenameButtonInMenu));
+
+        int hoverTextLoadIndex = result.FindIndex(instruction => instruction.LoadsField(hoverTextField));
+        if (hoverTextLoadIndex <= 0 || result[hoverTextLoadIndex - 1].opcode != OpCodes.Ldarg_0)
         {
-            return;
+            throw new InvalidOperationException(
+                "无法在 ItemGrabMenu.draw 的原版按钮与悬浮提示之间定位箱子改名按钮绘制点。");
         }
 
-        DrawRenameButton(b, state);
-        // Rule: ItemGrabMenu.draw 已经绘制过软件鼠标；这里补画一次，避免自定义按钮盖住鼠标指针。
-        __instance.drawMouse(b);
+        int insertIndex = hoverTextLoadIndex - 1;
+        CodeInstruction loadMenu = new(OpCodes.Ldarg_0);
+        loadMenu.labels.AddRange(result[insertIndex].labels);
+        result[insertIndex].labels.Clear();
+        loadMenu.blocks.AddRange(result[insertIndex].blocks);
+        result[insertIndex].blocks.Clear();
+        result.InsertRange(
+            insertIndex,
+            new[]
+            {
+                loadMenu,
+                new CodeInstruction(OpCodes.Ldarg_1),
+                new CodeInstruction(OpCodes.Call, drawButtonMethod)
+            });
+        return result;
+    }
+
+    private static void DrawRenameButtonInMenu(ItemGrabMenu menu, SpriteBatch batch)
+    {
+        if (TryGetRenameButton(menu, out _, out RenameButtonState? state) && state is not null)
+            DrawRenameButton(batch, state);
     }
 
     private static void PerformObjectDropInActionPostfix(Chest __instance, bool __result)
@@ -147,7 +175,11 @@ internal static class ChestNameFeature
         if (!menu.allClickableComponents.Contains(buttonState.Button))
             menu.allClickableComponents.Add(buttonState.Button);
 
-        PositionRenameButton(menu, buttonState);
+        if (buttonState.PositionedTick != Game1.ticks)
+        {
+            PositionRenameButton(menu, buttonState);
+            buttonState.PositionedTick = Game1.ticks;
+        }
         return true;
     }
 
@@ -164,40 +196,215 @@ internal static class ChestNameFeature
 
     private static void PositionRenameButton(ItemGrabMenu menu, RenameButtonState state)
     {
-        int x = menu.ItemsToGrabMenu.xPositionOnScreen
-            + menu.ItemsToGrabMenu.width
-            + IClickableMenu.borderWidth * 2;
-        ClickableComponent? bottomSideButton = GetBottomSideButton(menu);
-        int y = bottomSideButton is null
-            ? menu.ItemsToGrabMenu.yPositionOnScreen + menu.ItemsToGrabMenu.height / 2 - ButtonSize / 2
-            : bottomSideButton.bounds.Bottom + SideButtonGap;
-        state.Button.bounds = new Rectangle(x, y, ButtonSize, ButtonSize);
+        RestoreNavigationLink(state);
 
-        int storageColumnCount = menu.ItemsToGrabMenu.capacity / menu.ItemsToGrabMenu.rows;
-        state.Button.leftNeighborID = ItemGrabMenu.region_itemsToGrabMenuModifier + storageColumnCount - 1;
-        state.Button.upNeighborID = bottomSideButton?.myID ?? -1;
-        state.Button.downNeighborID = menu.trashCan?.myID ?? -1;
-        if (bottomSideButton is not null)
-            bottomSideButton.downNeighborID = state.Button.myID;
-        if (menu.trashCan is not null)
-            menu.trashCan.upNeighborID = state.Button.myID;
+        int preferredY = menu.ItemsToGrabMenu.yPositionOnScreen
+            + menu.ItemsToGrabMenu.height / 2
+            - ButtonSize / 2;
+        Rectangle bounds = FindAvailableButtonBounds(menu, state.Button, preferredY);
+        state.Button.bounds = bounds;
+
+        bool isLeftOfStorage = bounds.Center.X < menu.ItemsToGrabMenu.xPositionOnScreen;
+        InventoryMenu.BorderSide borderSide = isLeftOfStorage
+            ? InventoryMenu.BorderSide.Left
+            : InventoryMenu.BorderSide.Right;
+        ClickableComponent? nearestStorageSlot = menu.ItemsToGrabMenu
+            .GetBorder(borderSide)
+            .Where(component => component.bounds.Width > 0 && component.bounds.Height > 0)
+            .OrderBy(component => Math.Abs(component.bounds.Center.Y - bounds.Center.Y))
+            .FirstOrDefault();
+
+        state.Button.leftNeighborID = isLeftOfStorage
+            ? -99998
+            : nearestStorageSlot?.myID ?? -99998;
+        state.Button.rightNeighborID = isLeftOfStorage
+            ? nearestStorageSlot?.myID ?? -99998
+            : -99998;
+        state.Button.upNeighborID = -99998;
+        state.Button.downNeighborID = -99998;
+        LinkStorageSlotToButton(state, menu.ItemsToGrabMenu, nearestStorageSlot, isLeftOfStorage);
     }
 
-    private static ClickableComponent? GetBottomSideButton(ItemGrabMenu menu)
+    private static void RestoreNavigationLink(RenameButtonState state)
     {
-        ClickableComponent? result = null;
-        Consider(menu.organizeButton);
-        Consider(menu.fillStacksButton);
-        Consider(menu.colorPickerToggleButton);
-        Consider(menu.specialButton);
-        Consider(menu.junimoNoteIcon);
-        return result;
+        if (state.LinkedStorageSlot is null)
+            return;
 
-        void Consider(ClickableComponent? candidate)
+        if (state.LinkedFromLeft && state.LinkedStorageSlot.leftNeighborID == RenameButtonId)
         {
-            if (candidate is not null && (result is null || candidate.bounds.Bottom > result.bounds.Bottom))
-                result = candidate;
+            state.LinkedStorageSlot.leftNeighborID = state.PreviousNeighborId;
+            state.LinkedStorageSlot.leftNeighborImmutable = state.PreviousNeighborImmutable;
         }
+        else if (!state.LinkedFromLeft && state.LinkedStorageSlot.rightNeighborID == RenameButtonId)
+        {
+            state.LinkedStorageSlot.rightNeighborID = state.PreviousNeighborId;
+            state.LinkedStorageSlot.rightNeighborImmutable = state.PreviousNeighborImmutable;
+        }
+
+        state.LinkedStorageSlot = null;
+    }
+
+    private static void LinkStorageSlotToButton(
+        RenameButtonState state,
+        InventoryMenu storageMenu,
+        ClickableComponent? storageSlot,
+        bool buttonIsLeft)
+    {
+        if (storageSlot is null)
+            return;
+
+        if (buttonIsLeft)
+        {
+            if (!IsVanillaLeftBoundaryTarget(storageMenu, storageSlot.leftNeighborID))
+                return;
+
+            state.LinkedStorageSlot = storageSlot;
+            state.LinkedFromLeft = true;
+            state.PreviousNeighborId = storageSlot.leftNeighborID;
+            state.PreviousNeighborImmutable = storageSlot.leftNeighborImmutable;
+            storageSlot.leftNeighborID = RenameButtonId;
+            storageSlot.leftNeighborImmutable = true;
+            return;
+        }
+
+        if (storageSlot.rightNeighborImmutable
+            || IsExternalNavigationTarget(storageMenu, storageSlot.rightNeighborID))
+        {
+            return;
+        }
+
+        state.LinkedStorageSlot = storageSlot;
+        state.LinkedFromLeft = false;
+        state.PreviousNeighborId = storageSlot.rightNeighborID;
+        state.PreviousNeighborImmutable = storageSlot.rightNeighborImmutable;
+        storageSlot.rightNeighborID = RenameButtonId;
+        storageSlot.rightNeighborImmutable = true;
+    }
+
+    private static bool IsVanillaLeftBoundaryTarget(InventoryMenu storageMenu, int neighborId)
+    {
+        int offsetDropButtonId = ItemGrabMenu.region_itemsToGrabMenuModifier
+            + InventoryMenu.region_dropButton;
+        return neighborId < 0
+            || neighborId == offsetDropButtonId
+            || storageMenu.inventory.Any(component => component.myID == neighborId);
+    }
+
+    private static bool IsExternalNavigationTarget(InventoryMenu storageMenu, int neighborId)
+    {
+        return neighborId >= 0
+            && storageMenu.inventory.All(component => component.myID != neighborId);
+    }
+
+    private static Rectangle FindAvailableButtonBounds(
+        ItemGrabMenu menu,
+        ClickableComponent button,
+        int preferredY)
+    {
+        int viewportWidth = Game1.uiViewport.Width;
+        int viewportHeight = Game1.uiViewport.Height;
+        int minY = SideButtonGap;
+        int maxY = Math.Max(minY, viewportHeight - ButtonSize - SideButtonGap);
+        int centeredY = Math.Clamp(preferredY, minY, maxY);
+        int columnStep = ButtonSize + SideButtonGap;
+
+        int leftX = menu.ItemsToGrabMenu.xPositionOnScreen
+            - IClickableMenu.borderWidth * 2
+            - ButtonSize;
+        for (int x = leftX; x >= SideButtonGap; x -= columnStep)
+        {
+            if (TryFindAvailableY(menu, button, x, centeredY, minY, maxY, out Rectangle bounds))
+                return bounds;
+        }
+
+        int rightX = menu.ItemsToGrabMenu.xPositionOnScreen
+            + menu.ItemsToGrabMenu.width
+            + IClickableMenu.borderWidth * 2;
+        for (int x = rightX; x + ButtonSize <= viewportWidth - SideButtonGap; x += columnStep)
+        {
+            if (TryFindAvailableY(menu, button, x, centeredY, minY, maxY, out Rectangle bounds))
+                return bounds;
+        }
+
+        // Guarantee: 极窄窗口没有完整侧栏时，按钮仍保持在屏幕内并优先贴近菜单左侧。
+        int fallbackX = Math.Clamp(leftX, SideButtonGap, Math.Max(SideButtonGap, viewportWidth - ButtonSize - SideButtonGap));
+        return new Rectangle(fallbackX, centeredY, ButtonSize, ButtonSize);
+    }
+
+    private static bool TryFindAvailableY(
+        ItemGrabMenu menu,
+        ClickableComponent button,
+        int x,
+        int preferredY,
+        int minY,
+        int maxY,
+        out Rectangle bounds)
+    {
+        Rectangle preferred = new(x, preferredY, ButtonSize, ButtonSize);
+        if (IsButtonPositionAvailable(menu, button, preferred))
+        {
+            bounds = preferred;
+            return true;
+        }
+
+        HashSet<int> candidateYs = new() { minY, maxY };
+        foreach (ClickableComponent component in menu.allClickableComponents)
+        {
+            if (ReferenceEquals(component, button)
+                || component.bounds.Width <= 0
+                || component.bounds.Height <= 0)
+            {
+                continue;
+            }
+
+            Rectangle occupied = component.bounds;
+            occupied.Inflate(SideButtonGap, SideButtonGap);
+            if (x + ButtonSize <= occupied.Left || x >= occupied.Right)
+                continue;
+
+            int above = occupied.Top - ButtonSize;
+            int below = occupied.Bottom;
+            if (above >= minY && above <= maxY)
+                candidateYs.Add(above);
+            if (below >= minY && below <= maxY)
+                candidateYs.Add(below);
+        }
+
+        foreach (int y in candidateYs.OrderBy(value => Math.Abs(value - preferredY)))
+        {
+            Rectangle candidate = new(x, y, ButtonSize, ButtonSize);
+            if (IsButtonPositionAvailable(menu, button, candidate))
+            {
+                bounds = candidate;
+                return true;
+            }
+        }
+
+        bounds = Rectangle.Empty;
+        return false;
+    }
+
+    private static bool IsButtonPositionAvailable(
+        ItemGrabMenu menu,
+        ClickableComponent button,
+        Rectangle candidate)
+    {
+        foreach (ClickableComponent component in menu.allClickableComponents)
+        {
+            if (ReferenceEquals(component, button)
+                || component.bounds.Width <= 0
+                || component.bounds.Height <= 0)
+            {
+                continue;
+            }
+
+            Rectangle occupied = component.bounds;
+            occupied.Inflate(SideButtonGap, SideButtonGap);
+            if (candidate.Intersects(occupied))
+                return false;
+        }
+
+        return true;
     }
 
     private static void DrawRenameButton(SpriteBatch batch, RenameButtonState state)
@@ -370,6 +577,11 @@ internal static class ChestNameFeature
 
         internal ClickableComponent Button { get; }
         internal bool IsHovered { get; set; }
+        internal int PositionedTick { get; set; } = -1;
+        internal ClickableComponent? LinkedStorageSlot { get; set; }
+        internal bool LinkedFromLeft { get; set; }
+        internal int PreviousNeighborId { get; set; }
+        internal bool PreviousNeighborImmutable { get; set; }
     }
 
     private sealed class ChestNamingMenu : NamingMenu

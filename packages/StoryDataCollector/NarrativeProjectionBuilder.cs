@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -87,6 +88,18 @@ public sealed class NarrativeProjectionBuilder
                     break;
                 case "MoneyChanged":
                     fact.MoneyAmount = SumDetail(events, "amount");
+                    break;
+                case "StoryEvent":
+                    fact.LastTime = GetIntDetail(first, "endTime") is int endTime && endTime > 0
+                        ? endTime
+                        : first.Time;
+                    fact.Participants = GetStringListDetail(first, "participants", StoryEventScriptParser.MaxParticipants, 80);
+                    fact.DialogueHighlights = GetStringListDetail(first, "dialogueHighlights", StoryEventScriptParser.MaxDialogueHighlights, 240);
+                    fact.ActionCues = GetStringListDetail(first, "actionCues", StoryEventScriptParser.MaxActionCues, 160);
+                    fact.PlayerChoices = GetStringListDetail(first, "playerChoices", StoryEventScriptParser.MaxPlayerChoices, 500);
+                    fact.PlayerParticipated = GetBoolDetail(first, "playerParticipated");
+                    fact.Completed = GetBoolDetail(first, "completed");
+                    fact.Skipped = GetBoolDetail(first, "skipped");
                     break;
             }
 
@@ -206,9 +219,12 @@ public sealed class NarrativeProjectionBuilder
 
     private static EventGroupKey CreateEventGroupKey(GameEvent gameEvent)
     {
-        string? itemName = gameEvent.Type is "GiftGiven" or "Purchase"
-            ? GetStringDetail(gameEvent, "itemName")
-            : null;
+        string? itemName = gameEvent.Type switch
+        {
+            "GiftGiven" or "Purchase" => GetStringDetail(gameEvent, "itemName"),
+            "StoryEvent" => $"{GetStringDetail(gameEvent, "eventId")}#{gameEvent.Sequence}",
+            _ => null
+        };
         int moneyDirection = gameEvent.Type == "MoneyChanged"
             ? Math.Sign(GetIntDetail(gameEvent, "amount"))
             : 0;
@@ -235,6 +251,7 @@ public sealed class NarrativeProjectionBuilder
         int score = fact.Importance * 100 + Math.Min(fact.Occurrences, 20) * 3;
         score += fact.Kind switch
         {
+            "StoryEvent" => 1000,
             "PlayerPassedOut" or "PlayerKnockedOut" => 300,
             "Gift" => 100,
             "NpcEncounter" => 50,
@@ -274,6 +291,38 @@ public sealed class NarrativeProjectionBuilder
             _ when int.TryParse(value.ToString(), out int parsed) => parsed,
             _ => 0
         };
+    }
+
+    private static bool? GetBoolDetail(GameEvent gameEvent, string name)
+    {
+        if (!gameEvent.Details.TryGetValue(name, out object? value) || value is null)
+            return null;
+        if (value is bool boolean)
+            return boolean;
+        return bool.TryParse(value.ToString(), out bool parsed) ? parsed : null;
+    }
+
+    private static List<string> GetStringListDetail(GameEvent gameEvent, string name, int maximumCount, int maximumLength)
+    {
+        if (!gameEvent.Details.TryGetValue(name, out object? value) || value is null)
+            return new List<string>();
+
+        IEnumerable values = value is string scalar ? new[] { scalar } : value as IEnumerable ?? Array.Empty<object>();
+        List<string> result = new();
+        foreach (object? item in values)
+        {
+            string? itemText = item?.ToString()?.Trim();
+            if (string.IsNullOrWhiteSpace(itemText))
+                continue;
+            if (itemText.Length > maximumLength)
+                itemText = itemText[..maximumLength].TrimEnd() + "…";
+            if (result.Contains(itemText, StringComparer.Ordinal))
+                continue;
+            result.Add(itemText);
+            if (result.Count >= maximumCount)
+                break;
+        }
+        return result;
     }
 
     private static DailyDate CopyDate(DailyDate date)

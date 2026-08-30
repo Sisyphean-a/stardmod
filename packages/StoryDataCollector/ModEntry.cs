@@ -38,7 +38,7 @@ public sealed class ModEntry : Mod
             "故事数据采集器：story_data status | flush（写入有界 checkpoint 快照）",
             OnConsoleCommand);
 
-        Monitor.Log("故事数据采集器已加载（Phase 1：有界事实采集、增量 checkpoint 与 AI 叙事输入）。", LogLevel.Info);
+        Monitor.Log("故事数据采集器已加载（有界事实采集、剧情事件、checkpoint 与 AI 叙事输入）。", LogLevel.Info);
     }
 
     private void OnConsoleCommand(string command, string[] args)
@@ -57,7 +57,7 @@ public sealed class ModEntry : Mod
                 collector.FlushCheckpoint();
                 break;
             default:
-                Monitor.Log("未知指令。请使用 story_data status | flush（写入增量 checkpoint）。", LogLevel.Warn);
+                Monitor.Log("未知指令。请使用 story_data status | flush（写入有界 checkpoint 快照）。", LogLevel.Warn);
                 break;
         }
     }
