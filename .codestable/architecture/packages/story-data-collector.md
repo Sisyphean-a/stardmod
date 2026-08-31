@@ -13,7 +13,7 @@ scope: package:story-data-collector
 - 通用剧情事件采集器观察 `Game1.CurrentEvent`，记录稳定事件 ID 和来源资产供原始事实追踪，从已经本地化的事件命令提取有界参与者、关键台词、动作线索与玩家选择，并区分完成和跳过；不硬编码 Shane 或原版事件目录。
 - 日结由 `NarrativeProjectionBuilder` 把事件、地点时长、起止背包差分和状态变化聚合为固定条数的 `NarrativeDailyInput`，写入 `data/<SaveUniqueId>/narrative-input/Year<year>-<Season>-<day>.json`。未来 AI 消费该文件，不直接消费 `DailyRecord`。`StoryEvent` 使用最高叙事优先级，AI 只接收有界语义线索，不接收内部事件 ID 或完整事件脚本。
 - 维护从当天首次可观察位置开始、由本地玩家 `Warped` 事件切分的 `LocationStay`；地点使用 `NameOrUniqueName` 和可读显示名，不使用原版地点枚举白名单。
-- Phase 1 采集 NPC 对话、礼物、商店购买、无法归因的金钱变化、实际睡眠、疲劳昏倒和生命值归零，并通过有界 checkpoint 快照、`Saving` 和 `DayEnding` 写入 `data/<SaveUniqueId>/Year<year>-<Season>-<day>.json`。checkpoint 只用于恢复未完成当日，完成的日记录与叙事输入都写入成功后删除。
+- Phase 1 采集 NPC 对话、礼物、商店购买、无法归因的金钱变化、实际睡眠、疲劳昏倒和生命值归零，并通过有界 checkpoint 快照、`Saving` 和 `DayEnding` 写入 `data/<SaveUniqueId>/Year<year>-<Season>-<day>.json`。checkpoint 只用于当前尝试的临时保护、历史未完成归档或完整记录的叙事输入补写；它不跨同一游戏日重载续接，完成的日记录与叙事输入都写入成功后删除。
 - 同一 mod 拥有独立 manifest、配置和构建输出，不与 `Toolbox` 共用运行时身份或配置。
 
 ## 入口与代码锚点
@@ -32,7 +32,7 @@ scope: package:story-data-collector
 - Harmony：`NPC.checkAction` 在同步打开对话框后记录 `NpcTalk`；`NPC.receiveGift` 记录实际可接收的礼物及喜好；`ShopMenu.tryToPurchaseItem` 记录成功购买并将已知金钱扣除与 `MoneyChanged` 兜底关联；`GameLocation.doSleep` 只在多人准备完成、实际进入睡眠流程时记录 `Sleep`；`Farmer.passOutFromTired` 记录疲劳或过晚昏倒；`Event.tryEventCommand` 只提取实际执行过的剧情台词和动作，`Event.skipEvent`、`Event.exitEvent` 和 `Event.answerDialogue` 在原调用成功后补充跳过、完成与玩家选择状态。剧情开始及参与者由 `UpdateTicked` 对 `Game1.CurrentEvent` 的引用切换观察，正常每 Tick 只做引用比较。
 - 剧情语义提取遵循 [ADR-003](../../requirements/adrs/003-bounded-story-event-semantics.md)：每个事件最多保存 16 名参与者、12 条台词、12 条动作线索和 8 个玩家选择，不保存完整脚本。
 - 生命值归零由 `UpdateTicked` 观察 `Farmer.health` 的正数到零变化，避免把可被护符即时恢复的短暂中间状态误记为昏倒；起止背包快照只表达物品持有量变化，不推断其来源。
-- checkpoint 以单个当前日快照和待完成日期索引运行；索引保留叙事输入尚未写成的日期，加载时只处理当前日和一个历史待处理日，避免全量扫描。恢复前校验结构和硬上限，损坏文件保留并报警而不覆盖原始日记录。恢复始终重新应用当前事件与地点预算。
+- checkpoint 以单个当前日快照和待完成日期索引运行；索引保留叙事输入尚未写成的日期，加载时只处理当前日和一个历史待处理日，避免全量扫描。恢复前校验结构和硬上限，损坏文件保留并报警而不覆盖原始日记录。按照 [ADR-004](../../requirements/adrs/004-discard-reloaded-day-attempt.md)，同一游戏日重新加载表示世界已回到存档状态，未完成的当前日 checkpoint 必须舍弃并重新采集，不能与新尝试拼接；历史 checkpoint 只能归档为未完成记录，完整原始记录仍可据此补写叙事输入。
 - Harmony 目标逐个解析和注册；目标不存在或补丁失败只记录 Warning，对应采集项为 `Unsupported`，不阻止整个 mod 加载；启动日志和 `story_data status` 会列出每个入口的 `Supported` / `Unsupported` 状态。
 - 金钱无法与实际行为关联时只写 `MoneyChanged`，详情中的 `reason` 保持 `Unknown`，不猜测购买或消费原因。
 

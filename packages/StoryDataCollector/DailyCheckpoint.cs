@@ -2,6 +2,33 @@ using System.Collections.Generic;
 
 namespace StoryDataCollector;
 
+internal enum CheckpointRecoveryAction
+{
+    CompleteFinalRecord,
+    DiscardAbandonedCurrentAttempt,
+    ArchiveHistoricalAttempt
+}
+
+internal static class CheckpointRecoveryPolicy
+{
+    internal static CheckpointRecoveryAction Classify(
+        DailyDate checkpointDate,
+        DailyDate currentDate,
+        bool completedRecordExists)
+    {
+        if (completedRecordExists)
+            return CheckpointRecoveryAction.CompleteFinalRecord;
+        if (checkpointDate.Year == currentDate.Year
+            && string.Equals(checkpointDate.Season, currentDate.Season, System.StringComparison.OrdinalIgnoreCase)
+            && checkpointDate.Day == currentDate.Day)
+        {
+            return CheckpointRecoveryAction.DiscardAbandonedCurrentAttempt;
+        }
+
+        return CheckpointRecoveryAction.ArchiveHistoricalAttempt;
+    }
+}
+
 internal sealed class DailyCheckpoint
 {
     public int SchemaVersion { get; set; } = 1;

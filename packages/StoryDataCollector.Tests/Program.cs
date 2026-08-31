@@ -13,6 +13,7 @@ static class Program
             StoryEventsExposeNarrativeMeaningAndWinTheBudget();
             EventBudgetRetainsHigherValueFacts();
             CheckpointValidationRejectsMalformedSnapshots();
+            ReloadedDaysDiscardAbandonedCurrentAttempt();
             ConfigurationClampsPersistenceBudgets();
             AiContractDoesNotExposeRawEventFields();
             Console.WriteLine("StoryDataCollector.Tests: PASS");
@@ -177,6 +178,25 @@ static class Program
         Require(CheckpointValidator.IsValid(checkpoint), "A bounded story event checkpoint must validate.");
         participants.Add("ActorOverflow");
         Require(!CheckpointValidator.IsValid(checkpoint), "Unbounded story details must reject a checkpoint before recovery writes raw data.");
+    }
+
+    private static void ReloadedDaysDiscardAbandonedCurrentAttempt()
+    {
+        DailyDate currentDate = new() { Year = 1, Season = "summer", Day = 4 };
+        DailyDate priorDate = new() { Year = 1, Season = "summer", Day = 3 };
+
+        Require(
+            CheckpointRecoveryPolicy.Classify(currentDate, currentDate, completedRecordExists: false)
+                == CheckpointRecoveryAction.DiscardAbandonedCurrentAttempt,
+            "Reloading the same game day must not merge an abandoned checkpoint timeline into the restarted day.");
+        Require(
+            CheckpointRecoveryPolicy.Classify(priorDate, currentDate, completedRecordExists: false)
+                == CheckpointRecoveryAction.ArchiveHistoricalAttempt,
+            "A bounded historical checkpoint may still recover its incomplete archive without joining the current day.");
+        Require(
+            CheckpointRecoveryPolicy.Classify(currentDate, currentDate, completedRecordExists: true)
+                == CheckpointRecoveryAction.CompleteFinalRecord,
+            "A completed raw record must retain narrative-input retry recovery.");
     }
 
     private static void ConfigurationClampsPersistenceBudgets()

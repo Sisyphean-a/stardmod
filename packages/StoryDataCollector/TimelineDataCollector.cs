@@ -56,9 +56,7 @@ internal sealed class TimelineDataCollector
         ResetState();
         saveId = Game1.uniqueIDForThisGame.ToString(CultureInfo.InvariantCulture);
         RestoreIncompleteCheckpoints();
-        LogDebug(record is null
-            ? "[Lifecycle] SaveLoaded：等待 DayStarted 建立当天记录。"
-            : "[Lifecycle] SaveLoaded：已从 checkpoint 恢复当天记录。");
+        LogDebug("[Lifecycle] SaveLoaded：已处理待完成数据，等待 DayStarted 建立当天记录。");
     }
 
     internal void OnDayStarted(object? sender, DayStartedEventArgs e)
@@ -111,7 +109,15 @@ internal sealed class TimelineDataCollector
         if (record is not null && !finalized)
         {
             FinalizeActiveStoryEvent(completed: false);
-            WriteCheckpoint("returned-to-title", force: true);
+            try
+            {
+                ClearCheckpoints(record.Date);
+                LogDebug("[Lifecycle] ReturnedToTitle：已舍弃未提交的当前日时间线及 checkpoint。");
+            }
+            catch (Exception ex)
+            {
+                monitor.Log($"清理被舍弃的当前日 checkpoint 失败：{ex.GetBaseException().Message}", LogLevel.Warn);
+            }
         }
 
         ResetState();
@@ -936,26 +942,22 @@ internal sealed class TimelineDataCollector
             checkpointPaths.Add(GetAbsolutePath(GetCheckpointPath(additionalDate)));
 
         foreach (string checkpointPath in checkpointPaths.Where(File.Exists))
-        {
-            DailyRecord? recovered = TryRecoverCheckpointFile(checkpointPath);
-            if (recovered is not null && IsDateForCurrentGameDay(recovered.Date))
-                RestoreCurrentDayRecord(recovered);
-        }
+            ProcessCheckpointFile(checkpointPath, currentDate);
 
         CompletePendingNarrativeInput(currentDate);
         if (additionalDate is not null)
             CompletePendingNarrativeInput(additionalDate);
     }
 
-    private DailyRecord? TryRecoverCheckpointFile(string checkpointPath)
+    private void ProcessCheckpointFile(string checkpointPath, DailyDate currentDate)
     {
         DailyCheckpoint? checkpoint = ReadCheckpoint(checkpointPath);
         if (checkpoint is null)
-            return null;
+            return;
         if (!CheckpointValidator.IsValid(checkpoint))
         {
             monitor.Log($"checkpoint 校验失败，已保留原文件等待人工处理：{checkpointPath}", LogLevel.Warn);
-            return null;
+            return;
         }
 
         try
@@ -964,13 +966,23 @@ internal sealed class TimelineDataCollector
             DailyRecord? existing = File.Exists(GetAbsolutePath(recordPath))
                 ? helper.Data.ReadJsonFile<DailyRecord>(recordPath)
                 : null;
-            if (existing?.IsComplete == true)
+            CheckpointRecoveryAction action = CheckpointRecoveryPolicy.Classify(
+                checkpoint.Date,
+                currentDate,
+                existing?.IsComplete == true);
+            if (action == CheckpointRecoveryAction.CompleteFinalRecord)
             {
-                if (!EnsureNarrativeInput(existing, saveId!))
-                    return null;
-
+                if (EnsureNarrativeInput(existing!, saveId!))
+                    ClearCheckpoints(checkpoint.Date);
+                return;
+            }
+            if (action == CheckpointRecoveryAction.DiscardAbandonedCurrentAttempt)
+            {
                 ClearCheckpoints(checkpoint.Date);
-                return null;
+                monitor.Log(
+                    $"已舍弃 Year{checkpoint.Date.Year}-{checkpoint.Date.Season}-{checkpoint.Date.Day:00} 的未提交 checkpoint；游戏重载后当天从存档状态重新采集。",
+                    LogLevel.Info);
+                return;
             }
 
             DailyRecord recovered = new()
@@ -1001,14 +1013,12 @@ internal sealed class TimelineDataCollector
             helper.Data.WriteJsonFile(recordPath, recovered);
             ClearCheckpoints(checkpoint.Date);
             monitor.Log(
-                $"已从 checkpoint 恢复未完成的 Year{recovered.Date.Year}-{recovered.Date.Season}-{recovered.Date.Day:00} 记录：{recovered.Events.Count} 个事件。",
+                $"已从 checkpoint 归档未完成的 Year{recovered.Date.Year}-{recovered.Date.Season}-{recovered.Date.Day:00} 历史记录：{recovered.Events.Count} 个事件。",
                 LogLevel.Info);
-            return recovered;
         }
         catch (Exception ex)
         {
-            monitor.Log($"恢复 checkpoint 失败（{checkpointPath}）：{ex.GetBaseException().Message}", LogLevel.Error);
-            return null;
+            monitor.Log($"处理 checkpoint 失败（{checkpointPath}）：{ex.GetBaseException().Message}", LogLevel.Error);
         }
     }
 
@@ -1063,28 +1073,6 @@ internal sealed class TimelineDataCollector
             monitor.Log($"读取 checkpoint 失败（{absolutePath}）：{ex.GetBaseException().Message}", LogLevel.Warn);
             return null;
         }
-    }
-
-    private void RestoreCurrentDayRecord(DailyRecord recovered)
-    {
-        record = recovered;
-        finalized = false;
-        completionLogged = false;
-        nextSequence = recovered.Events.Count == 0 ? 0 : recovered.Events.Max(gameEvent => gameEvent.Sequence);
-        checkpointedRecordRevision = -1;
-        checkpointedLocationRevision = -1;
-        recordRevision = 0;
-        locationRevision = 0;
-        activeLocationStay = recovered.LocationStays.LastOrDefault(stay => !stay.LeaveTime.HasValue);
-        activeLocationStayIsStored = activeLocationStay is not null;
-        foreach (GameEvent gameEvent in recovered.Events.Where(gameEvent => gameEvent.Type == "NpcTalk" && gameEvent.Target is not null))
-        {
-            talkCounts.TryGetValue(gameEvent.Target!, out int count);
-            talkCounts[gameEvent.Target!] = count + 1;
-        }
-
-        CapturePlayerSnapshot();
-        EnsureCurrentLocation();
     }
 
     private void ClearCheckpoints(DailyDate date)
