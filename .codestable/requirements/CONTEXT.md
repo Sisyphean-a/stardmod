@@ -13,6 +13,7 @@ scope: workspace
 - [context:hotkey-viewer](contexts/hotkey-viewer.md)：游戏本体与已加载模组快捷键查看和潜在冲突排查。代码位置：`packages/HotkeyViewer`。
 - [context:portable-loading-optimizer](contexts/portable-loading-optimizer.md)：不接管存档所有权的跨平台加载优化与平台分流。代码位置：`packages/PortableLoadingOptimizer`。
 - [context:story-data-collector](contexts/story-data-collector.md)：由真实游玩数据驱动、每天续写并以有界 AI 记忆维持连续性的故事日记；当前代码实现其事实采集底座。代码位置：`packages/StoryDataCollector`。
+- [context:fishing-bar-growth](contexts/fishing-bar-growth.md)：把有效鱼类捕获记录映射为原版钓鱼条成长奖励，并提供统计 HUD。代码位置：`packages/FishingBarGrowth`。
 
 ## 通用语言
 

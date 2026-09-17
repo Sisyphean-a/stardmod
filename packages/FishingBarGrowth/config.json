@@ -1,0 +1,10 @@
+{
+  "FishPerPixel": 10,
+  "MaxBarHeight": 600,
+  "EnableMod": true,
+  "ExcludeAlgae": true,
+  "ShowDebugInfo": false,
+  "ShowFishingHUD": true,
+  "HudXOffset": 20,
+  "HudYOffset": 180
+}

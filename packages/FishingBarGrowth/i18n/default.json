@@ -1,0 +1,39 @@
+{
+  "config.main.title": "Main Settings",
+  
+  "config.enable.name": "Enable Mod",
+  "config.enable.tooltip": "Enable or disable the fishing bar growth feature.",
+  
+  "config.fishPerPixel.name": "Fish Per Pixel",
+  "config.fishPerPixel.tooltip": "How many fish you need to catch to increase the fishing bar by 1 pixel. Default: 10",
+  
+  "config.maxHeight.name": "Max Bar Height",
+  "config.maxHeight.tooltip": "Maximum height of the fishing bar in pixels. Set to 0 for unlimited. Default: 600",
+  
+  "config.excludeAlgae.name": "Exclude Algae",
+  "config.excludeAlgae.tooltip": "Exclude algae and seaweed (IDs: 152, 153, 157) from fish count.",
+
+  "config.hud.title": "HUD Display Settings",
+
+  "config.showHUD.name": "Show Fishing HUD",
+  "config.showHUD.tooltip": "Display fishing statistics in the bottom-left corner when holding a fishing rod.",
+
+  "config.hudX.name": "HUD Horizontal Position",
+  "config.hudX.tooltip": "Distance from the left edge of the screen in pixels. Default: 20",
+
+  "config.hudY.name": "HUD Vertical Position",
+  "config.hudY.tooltip": "Distance from the bottom of the screen in pixels. Default: 180",
+
+  "config.debug.title": "Debug Settings",
+
+  "config.debugInfo.name": "Show Debug Info",
+  "config.debugInfo.tooltip": "Display debug information in the console when fishing.",
+
+  "hud.title": "Fishing Statistics",
+  "hud.fishCount": "Fish caught: {0}",
+  "hud.barHeight": "Fishing bar height: {0} px",
+  "hud.breakdown": "(Base: {0} + Bonus: {1})",
+  "hud.baseOnly": "(Base: {0})",
+  "hud.waiting": "Start fishing to collect data"
+}
+

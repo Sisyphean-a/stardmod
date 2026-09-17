@@ -11,12 +11,18 @@
 | [`Toolbox`](packages/Toolbox) | `1.9.0` | xixifu、irocendar、EnderTedi、Rakiin aKa ScheKaa | `xixifu.Toolbox` | `Toolbox.dll` | `4.0.0` |
 | [`HorseFollower`](packages/HorseFollower) | `1.6.0` | xixifu | `xixifu.HorseFollower` | `HorseFollower.dll` | `4.0.0` |
 | [`HotkeyViewer`](packages/HotkeyViewer) | `1.0.0` | xixifu | `xixifu.HotkeyViewer` | `HotkeyViewer.dll` | `4.0.0` |
+| [`PortableLoadingOptimizer`](packages/PortableLoadingOptimizer) | `1.0.0` | xixifu | `xixifu.PortableLoadingOptimizer` | `PortableLoadingOptimizer.dll` | `4.0.0` |
+| [`StoryDataCollector`](packages/StoryDataCollector) | `1.1.1` | xixifu | `xixifu.StoryDataCollector` | `StoryDataCollector.dll` | `4.0.0` |
+| [`FishingBarGrowth`](packages/FishingBarGrowth) | `1.3.1` | xixifu | `xixifu.FishingBarGrowth` | `FishingBarGrowth.dll` | `4.0.0` |
 
 | 包 | 定位 | 配置入口 |
 | --- | --- | --- |
 | `Toolbox` | 合并多个低耦合的农场、地图和操作便利功能。 | [config.json](packages/Toolbox/config.json)，支持 GMCM 游戏内配置 |
 | `HorseFollower` | 下马后让当天骑过的马跟随玩家。 | [config.json](packages/HorseFollower/config.json) |
 | `HotkeyViewer` | 在游戏内查看本体和已加载 Mod 的键鼠快捷键及潜在冲突。 | [config.json](packages/HotkeyViewer/config.json)，可选 GMCM |
+| `PortableLoadingOptimizer` | 面向 Windows 与 Android 的保守加载优化。 | [config.json](packages/PortableLoadingOptimizer/config.json) |
+| `StoryDataCollector` | 按时间线采集每天的地点、社交、交易、剧情事件和重要状态变化。 | [config.json](packages/StoryDataCollector/config.json) |
+| `FishingBarGrowth` | 根据有效鱼类捕获总数增加钓鱼条长度，并显示统计 HUD。 | [config.json](packages/FishingBarGrowth/config.json)，可选 GMCM |
 
 所有包的目标框架都是 `net6.0`。包描述、版本、作者、`UniqueID` 和入口 DLL 发生变化时，应以对应的 `manifest.json` 为准。
 
@@ -32,12 +38,16 @@
 - [`Toolbox/config.json`](packages/Toolbox/config.json)：所有 Toolbox 功能共用一份配置。
 - [`HorseFollower/config.json`](packages/HorseFollower/config.json)：跟随检查间隔、跟随距离和马棚取消范围。
 - [`HotkeyViewer/config.json`](packages/HotkeyViewer/config.json)：打开快捷键查看器的按键。
+- [`PortableLoadingOptimizer/config.json`](packages/PortableLoadingOptimizer/config.json)：预读预算和快速传送策略。
+- [`StoryDataCollector/config.json`](packages/StoryDataCollector/config.json)：事实、事件和叙事输入的采集上限。
+- [`FishingBarGrowth/config.json`](packages/FishingBarGrowth/config.json)：鱼数换算、钓鱼条上限和 HUD 设置。
 
 ### 可选的 GMCM 集成
 
 - `Toolbox`：没有 Generic Mod Config Menu（GMCM）时主体功能仍会加载，但不会创建游戏内设置页；安装 GMCM 后可配置已注册的功能。
 - `HotkeyViewer`：没有 GMCM 时仍可通过 `config.json` 修改打开键，但查看其他 Mod 快捷键时会更多依赖 `config.json` 推测。
 - `HorseFollower`：当前只提供 `config.json` 配置，没有注册 GMCM 设置页。
+- `FishingBarGrowth`：没有 GMCM 时主体功能仍会加载，但只能通过 `config.json` 修改配置。
 
 ## 各包功能
 
@@ -107,6 +117,37 @@ Toolbox 会检测下列独立版本，并跳过对应的内置实现。它们不
 
 配置文件：[`packages/HotkeyViewer/config.json`](packages/HotkeyViewer/config.json)
 
+### PortableLoadingOptimizer
+
+`PortableLoadingOptimizer`（`xixifu.PortableLoadingOptimizer`，当前版本 `1.0.0`）提供不接管存档所有权的保守加载优化：在受限预算内预读文件，并仅在支持的平台启用快速普通传送；Android 和其他非 Windows 平台保留原生淡入淡出。
+
+- 不替换 `SaveGame.Load`，不改写存档 XML，也不拥有游戏状态对象图。
+- 选档等待、后台文件预读和 Windows 快速传送分别由包内服务负责。
+- 检测到 `neoiw.StardewLoadingOptimizer` 时停用自身，避免重复补丁和预读。
+
+配置文件：[`packages/PortableLoadingOptimizer/config.json`](packages/PortableLoadingOptimizer/config.json)
+
+### StoryDataCollector
+
+`StoryDataCollector`（`xixifu.StoryDataCollector`，当前版本 `1.1.1`）按游戏日采集有界的地点、社交、交易、剧情和重要状态事实，并在日结生成后续 AI 使用的叙事输入；当前包不调用 AI、不生成故事 UI。
+
+- 记录原始事件和地点停留，同时限制内存与磁盘增长。
+- 以 checkpoint 保护当前日采集，并在完整记录与叙事输入都写成功后清理。
+- 包含通用过场参与、台词、动作和选择采集，不把完整事件脚本直接交给 AI。
+
+配置文件：[`packages/StoryDataCollector/config.json`](packages/StoryDataCollector/config.json)
+
+### FishingBarGrowth
+
+`FishingBarGrowth`（`xixifu.FishingBarGrowth`，当前版本 `1.3.1`）根据玩家已有的有效鱼类捕获记录增加原版钓鱼条高度：默认每 `10` 条有效鱼增加 `1` 像素，最大高度默认 `600` 像素，设置为 `0` 表示不限制。
+
+- 使用 `fishCaught` 的捕获总数识别鱼类；可排除藻类、海草和凝胶。
+- 在 `BobberBar` 构造时应用奖励，并在宝藏判定中只排除本包实际增加的高度。
+- 手持鱼竿时显示捕获数量、基础高度、奖励高度和最终高度，HUD 位置与显示开关可配置。
+- 提供中英文配置和 HUD 翻译；GMCM 为可选依赖，无 GMCM 时仍可直接编辑 `config.json`。
+
+用户与开发文档：[`packages/FishingBarGrowth/README.md`](packages/FishingBarGrowth/README.md)、[`packages/FishingBarGrowth/开发说明.md`](packages/FishingBarGrowth/开发说明.md)、[`packages/FishingBarGrowth/调试指南.md`](packages/FishingBarGrowth/调试指南.md)
+
 ## 项目结构
 
 ```text
@@ -115,7 +156,10 @@ Directory.Build.props    # 所有包共用的 C#、Nullable 和确定性构建�
 packages/
 ├── Toolbox/             # 工具箱：便利功能、NPC 地图和矿井梯子提示
 ├── HorseFollower/       # 马匹跟随；骑乘自动导航当前关闭
-└── HotkeyViewer/        # 快捷键查看器
+├── HotkeyViewer/        # 快捷键查看器
+├── PortableLoadingOptimizer/ # 跨平台加载优化器
+├── StoryDataCollector/   # 故事数据采集器
+└── FishingBarGrowth/     # 钓鱼条成长
 ```
 
 每个包通常包含：
@@ -142,6 +186,9 @@ dotnet build StardewMods.sln -c Release -p:GamePath="D:\Games\Stardew Valley"
 dotnet build packages/Toolbox/Toolbox.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
 dotnet build packages/HorseFollower/HorseFollower.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
 dotnet build packages/HotkeyViewer/HotkeyViewer.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
+dotnet build packages/PortableLoadingOptimizer/PortableLoadingOptimizer.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
+dotnet build packages/StoryDataCollector/StoryDataCollector.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
+dotnet build packages/FishingBarGrowth/FishingBarGrowth.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
 ```
 
 构建完成后，完整可部署包位于对应的 `packages/<Package>/dist/`。其中：
@@ -155,3 +202,6 @@ dotnet build packages/HotkeyViewer/HotkeyViewer.csproj -c Release -p:GamePath="D
 - [工具箱包说明](.codestable/architecture/packages/toolbox.md)
 - [马匹跟随包说明](.codestable/architecture/packages/horse-follower.md)
 - [快捷键查看器包说明](.codestable/architecture/packages/hotkey-viewer.md)
+- [跨平台加载优化器包说明](.codestable/architecture/packages/portable-loading-optimizer.md)
+- [故事数据采集器包说明](.codestable/architecture/packages/story-data-collector.md)
+- [钓鱼条成长包说明](.codestable/architecture/packages/fishing-bar-growth.md)

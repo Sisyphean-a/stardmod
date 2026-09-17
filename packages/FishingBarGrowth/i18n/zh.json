@@ -1,0 +1,39 @@
+{
+  "config.main.title": "主要设置",
+  
+  "config.enable.name": "启用模组",
+  "config.enable.tooltip": "启用或禁用钓鱼条增长功能。",
+  
+  "config.fishPerPixel.name": "每像素需要的鱼数",
+  "config.fishPerPixel.tooltip": "需要钓多少条鱼才能增加1像素的钓鱼条长度。默认值: 10",
+  
+  "config.maxHeight.name": "最大钓鱼条高度",
+  "config.maxHeight.tooltip": "钓鱼条的最大高度(像素)。设置为0表示无限制。默认值: 600",
+  
+  "config.excludeAlgae.name": "排除藻类",
+  "config.excludeAlgae.tooltip": "从鱼类计数中排除藻类和海草(ID: 152, 153, 157)。",
+
+  "config.hud.title": "HUD显示设置",
+
+  "config.showHUD.name": "显示钓鱼HUD",
+  "config.showHUD.tooltip": "手持鱼竿时在屏幕左下角显示钓鱼统计信息。",
+
+  "config.hudX.name": "HUD水平位置",
+  "config.hudX.tooltip": "HUD距离屏幕左边缘的距离(像素)。默认值: 20",
+
+  "config.hudY.name": "HUD垂直位置",
+  "config.hudY.tooltip": "HUD距离屏幕底部的距离(像素)。默认值: 180",
+
+  "config.debug.title": "调试设置",
+
+  "config.debugInfo.name": "显示调试信息",
+  "config.debugInfo.tooltip": "钓鱼时在控制台显示调试信息。",
+
+  "hud.title": "钓鱼统计",
+  "hud.fishCount": "已钓鱼数：{0} 条",
+  "hud.barHeight": "钓鱼条长度：{0} px",
+  "hud.breakdown": "（基础：{0} + 奖励：{1}）",
+  "hud.baseOnly": "（基础：{0}）",
+  "hud.waiting": "请先开始钓鱼以获取数据"
+}
+
