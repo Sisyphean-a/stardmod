@@ -1,0 +1,17 @@
+{
+  "config.enable_altar.name": "启用祭坛",
+  "config.base_fee.name": "基础费用",
+  "config.base_fee.tooltip": "献祭的基础金币费用（默认: 500）",
+  "config.inflation.name": "通胀系数",
+  "config.inflation.tooltip": "基于总收入的费用增长系数（默认: 0.001）",
+  "config.penalty.name": "惩罚指数",
+  "config.penalty.tooltip": "倍率增长的惩罚指数（默认: 1.0）",
+  "config.reduce_stones.name": "减少石头生成",
+  "config.reduce_stones.tooltip": "开启后，当怪物倍率增加时，会按比例减少石头生成，为怪物腾出生成空间。\n关闭此项可能会导致在高倍率下怪物数量无法达到预期（被石头挤占）。",
+  "ui.altar.title": "由巴的祭坛",
+  "ui.altar.description": "献祭金币以增强今日矿井的怪物生成",
+  "ui.altar.multiplier_label": "怪物生成倍率: {{val}}x",
+  "ui.altar.cost_label": "所需金币: {{val}}g",
+  "ui.altar.not_enough_money": "金币不足！",
+  "ui.altar.success_hud": "献祭成功！倍率：{{val}}x"
+}

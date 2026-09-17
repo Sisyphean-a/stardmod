@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FishingBarGrowth", "package
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PolymorphicAetherRing", "packages\PolymorphicAetherRing\PolymorphicAetherRing.csproj", "{4CF05311-41F6-41C2-8395-07F0BA894121}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MineBustle", "packages\MineBustle\MineBustle.csproj", "{1FCF275C-2BCD-48AA-8513-814E34F3E872}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -113,6 +115,18 @@ Global
 		{4CF05311-41F6-41C2-8395-07F0BA894121}.Release|x64.Build.0 = Release|Any CPU
 		{4CF05311-41F6-41C2-8395-07F0BA894121}.Release|x86.ActiveCfg = Release|Any CPU
 		{4CF05311-41F6-41C2-8395-07F0BA894121}.Release|x86.Build.0 = Release|Any CPU
+		{1FCF275C-2BCD-48AA-8513-814E34F3E872}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1FCF275C-2BCD-48AA-8513-814E34F3E872}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1FCF275C-2BCD-48AA-8513-814E34F3E872}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{1FCF275C-2BCD-48AA-8513-814E34F3E872}.Debug|x64.Build.0 = Debug|Any CPU
+		{1FCF275C-2BCD-48AA-8513-814E34F3E872}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{1FCF275C-2BCD-48AA-8513-814E34F3E872}.Debug|x86.Build.0 = Debug|Any CPU
+		{1FCF275C-2BCD-48AA-8513-814E34F3E872}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1FCF275C-2BCD-48AA-8513-814E34F3E872}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1FCF275C-2BCD-48AA-8513-814E34F3E872}.Release|x64.ActiveCfg = Release|Any CPU
+		{1FCF275C-2BCD-48AA-8513-814E34F3E872}.Release|x64.Build.0 = Release|Any CPU
+		{1FCF275C-2BCD-48AA-8513-814E34F3E872}.Release|x86.ActiveCfg = Release|Any CPU
+		{1FCF275C-2BCD-48AA-8513-814E34F3E872}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -121,5 +135,6 @@ Global
 		{1071838A-4A9F-4025-B1B6-9DE1D8678DDE} = {809F86A1-1C4C-B159-0CD4-DF9D33D876CE}
 		{F7F9AA75-C3D5-4F8F-823F-B97B451A63C2} = {809F86A1-1C4C-B159-0CD4-DF9D33D876CE}
 		{4CF05311-41F6-41C2-8395-07F0BA894121} = {809F86A1-1C4C-B159-0CD4-DF9D33D876CE}
+		{1FCF275C-2BCD-48AA-8513-814E34F3E872} = {809F86A1-1C4C-B159-0CD4-DF9D33D876CE}
 	EndGlobalSection
 EndGlobal

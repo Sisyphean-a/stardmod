@@ -15,6 +15,7 @@
 | [`StoryDataCollector`](packages/StoryDataCollector) | `1.1.1` | xixifu | `xixifu.StoryDataCollector` | `StoryDataCollector.dll` | `4.0.0` |
 | [`FishingBarGrowth`](packages/FishingBarGrowth) | `1.3.1` | xixifu | `xixifu.FishingBarGrowth` | `FishingBarGrowth.dll` | `4.0.0` |
 | [`PolymorphicAetherRing`](packages/PolymorphicAetherRing) | `1.8.0` | xixifu | `xixifu.PolymorphicAetherTrinket` | `PolymorphicAetherRing.dll` | `4.0.0` |
+| [`MineBustle`](packages/MineBustle) | `1.0.0` | xixifu | `xixifu.MineBustle` | `MineBustle.dll` | `4.0.0` |
 
 | 包 | 定位 | 配置入口 |
 | --- | --- | --- |
@@ -25,6 +26,7 @@
 | `StoryDataCollector` | 按时间线采集每天的地点、社交、交易、剧情事件和重要状态变化。 | [config.json](packages/StoryDataCollector/config.json) |
 | `FishingBarGrowth` | 根据有效鱼类捕获总数增加钓鱼条长度，并显示统计 HUD。 | [config.json](packages/FishingBarGrowth/config.json)，可选 GMCM |
 | `PolymorphicAetherRing` | 吸收近战武器并用已装备戒指发动 360 度光环攻击。 | [config.json](packages/PolymorphicAetherRing/config.json)，可选 GMCM |
+| `MineBustle` | 通过由巴祭坛献祭金币，调整当天矿井怪物生成倍率。 | [config.json](packages/MineBustle/config.json)，可选 GMCM |
 
 所有包的目标框架都是 `net6.0`。包描述、版本、作者、`UniqueID` 和入口 DLL 发生变化时，应以对应的 `manifest.json` 为准。
 
@@ -44,6 +46,7 @@
 - [`StoryDataCollector/config.json`](packages/StoryDataCollector/config.json)：事实、事件和叙事输入的采集上限。
 - [`FishingBarGrowth/config.json`](packages/FishingBarGrowth/config.json)：鱼数换算、钓鱼条上限和 HUD 设置。
 - [`PolymorphicAetherRing/config.json`](packages/PolymorphicAetherRing/config.json)：光环伤害、范围、冷却、返还武器和 Android 长按设置。
+- [`MineBustle/config.json`](packages/MineBustle/config.json)：矿井怪物倍率、祭坛开关、石头生成和献祭费用设置。
 
 ### 可选的 GMCM 集成
 
@@ -52,6 +55,7 @@
 - `HorseFollower`：当前只提供 `config.json` 配置，没有注册 GMCM 设置页。
 - `FishingBarGrowth`：没有 GMCM 时主体功能仍会加载，但只能通过 `config.json` 修改配置。
 - `PolymorphicAetherRing`：没有 GMCM 时主体功能仍会加载，但只能通过 `config.json` 修改配置。
+- `MineBustle`：没有 GMCM 时主体功能仍会加载，但只能通过 `config.json` 修改配置。
 
 ## 各包功能
 
@@ -172,6 +176,19 @@ dotnet test packages/PolymorphicAetherRing.Tests/PolymorphicAetherRing.Tests.csp
 
 变更记录：[`packages/PolymorphicAetherRing/CHANGELOG.md`](packages/PolymorphicAetherRing/CHANGELOG.md)
 
+### MineBustle
+
+`MineBustle`（`xixifu.MineBustle`，当前版本 `1.0.0`）提供由巴祭坛：玩家在 `Mine` 地图的固定祭坛区域献祭金币，将当天矿井怪物生成倍率设置为 `1.0x`–`10.0x`。
+
+- 费用按照基础费用、玩家总收入、倍率增量和惩罚指数计算；每天开始时倍率重置为 `1.0x`。
+- 通过 Harmony Transpiler 调整 `MineShaft.populateLevel` 的怪物和石头生成概率；`ReduceStones` 可关闭石头概率调整。
+- 使用 SMAPI 资源请求 API 加载 TMX 地图补丁和祭坛贴图，不依赖 Content Patcher。
+- GMCM 为可选依赖；没有 GMCM 时仍可直接编辑 `config.json`。本包提供英文、中文和日文翻译。
+
+配置文件：[`packages/MineBustle/config.json`](packages/MineBustle/config.json)
+
+用户与开发文档：[`packages/MineBustle/README.md`](packages/MineBustle/README.md)
+
 ## 项目结构
 
 ```text
@@ -184,7 +201,8 @@ packages/
 ├── PortableLoadingOptimizer/ # 跨平台加载优化器
 ├── StoryDataCollector/        # 故事数据采集器
 ├── FishingBarGrowth/          # 钓鱼条成长
-└── PolymorphicAetherRing/     # 以太多态戒指
+├── PolymorphicAetherRing/     # 以太多态戒指
+└── MineBustle/                # 由巴祭坛与矿井怪物倍率
 ```
 
 每个包通常包含：
@@ -215,6 +233,7 @@ dotnet build packages/PortableLoadingOptimizer/PortableLoadingOptimizer.csproj -
 dotnet build packages/StoryDataCollector/StoryDataCollector.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
 dotnet build packages/FishingBarGrowth/FishingBarGrowth.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
 dotnet build packages/PolymorphicAetherRing/PolymorphicAetherRing.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
+dotnet build packages/MineBustle/MineBustle.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
 ```
 
 构建完成后，完整可部署包位于对应的 `packages/<Package>/dist/`。其中：
@@ -233,3 +252,5 @@ dotnet build packages/PolymorphicAetherRing/PolymorphicAetherRing.csproj -c Rele
 - [钓鱼条成长包说明](.codestable/architecture/packages/fishing-bar-growth.md)
 - [以太多态戒指包说明](.codestable/architecture/packages/polymorphic-aether-ring.md)
 - [以太多态戒指领域上下文](.codestable/requirements/contexts/aether-ring.md)
+- [MineBustle 包说明](.codestable/architecture/packages/mine-bustle.md)
+- [MineBustle 领域上下文](.codestable/requirements/contexts/mine-bustle.md)

@@ -1,0 +1,8 @@
+{
+  "CurrentMultiplier": 1.0,
+  "EnableAltar": true,
+  "ReduceStones": true,
+  "BaseFee": 500,
+  "InflationCoefficient": 0.001,
+  "PenaltyExponent": 1.0
+}

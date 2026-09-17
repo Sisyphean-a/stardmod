@@ -1,0 +1,17 @@
+{
+  "config.enable_altar.name": "Enable Altar",
+  "config.base_fee.name": "Base Fee",
+  "config.base_fee.tooltip": "Base gold cost for offering (Default: 500)",
+  "config.inflation.name": "Inflation Coefficient",
+  "config.inflation.tooltip": "Cost growth coefficient based on total earnings (Default: 0.001)",
+  "config.penalty.name": "Penalty Exponent",
+  "config.penalty.tooltip": "Exponential penalty for high multipliers (Default: 1.0)",
+  "config.reduce_stones.name": "Reduce Stone Spawns",
+  "config.reduce_stones.tooltip": "If enabled, stone spawns are reduced as monster multiplier increases to make room for monsters.\nDisabling this may result in fewer monsters than expected at high multipliers due to overcrowding.",
+  "ui.altar.title": "Yoba's Altar",
+  "ui.altar.description": "Offer gold to boost mine monster spawns for the day",
+  "ui.altar.multiplier_label": "Monster Spawn Multiplier: {{val}}x",
+  "ui.altar.cost_label": "Cost: {{val}}g",
+  "ui.altar.not_enough_money": "Not enough gold!",
+  "ui.altar.success_hud": "Offering Accepted! Multiplier: {{val}}x"
+}

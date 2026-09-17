@@ -1,0 +1,17 @@
+{
+  "config.enable_altar.name": "祭壇を有効にする",
+  "config.base_fee.name": "基本料金",
+  "config.base_fee.tooltip": "献金に必要な基本ゴールド（デフォルト：500）",
+  "config.inflation.name": "インフレ係数",
+  "config.inflation.tooltip": "総収益に基づく費用増加係数（デフォルト：0.001）",
+  "config.penalty.name": "ペナルティ指数",
+  "config.penalty.tooltip": "高倍率時の指数関数的ペナルティ（デフォルト：1.0）",
+  "config.reduce_stones.name": "石の生成を減らす",
+  "config.reduce_stones.tooltip": "有効にすると、モンスター倍率の増加に応じて石の生成が減少し、モンスターの出現スペースを確保します。\n無効にすると、高倍率時に石にスペースが占有され、モンスター数が期待通りにならない可能性があります。",
+  "ui.altar.title": "ヨバの祭壇",
+  "ui.altar.description": "ゴールドを捧げて今日の鉱山のモンスター生成を強化する",
+  "ui.altar.multiplier_label": "モンスター生成倍率: {{val}}x",
+  "ui.altar.cost_label": "必要ゴールド: {{val}}g",
+  "ui.altar.not_enough_money": "ゴールドが足りません！",
+  "ui.altar.success_hud": "献金成功！倍率：{{val}}x"
+}

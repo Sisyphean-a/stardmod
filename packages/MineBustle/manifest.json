@@ -1,0 +1,10 @@
+{
+  "Name": "MineBustle - Yoba's Altar",
+  "Author": "xixifu",
+  "Version": "1.0.0",
+  "Description": "通过由巴的祭坛献祭金币，动态调整矿井怪物生成倍率（1x-10x）。祭坛位于山区矿井入口附近。",
+  "UniqueID": "xixifu.MineBustle",
+  "EntryDll": "MineBustle.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}
