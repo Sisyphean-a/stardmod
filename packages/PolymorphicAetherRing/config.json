@@ -1,0 +1,7 @@
+{
+  "DamageMultiplier": 1.0,
+  "RangeMultiplier": 1.0,
+  "CooldownMultiplier": 1.0,
+  "ReturnFusedWeapon": false,
+  "AndroidLongPressMs": 500
+}

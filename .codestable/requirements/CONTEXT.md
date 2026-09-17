@@ -14,6 +14,7 @@ scope: workspace
 - [context:portable-loading-optimizer](contexts/portable-loading-optimizer.md)：不接管存档所有权的跨平台加载优化与平台分流。代码位置：`packages/PortableLoadingOptimizer`。
 - [context:story-data-collector](contexts/story-data-collector.md)：由真实游玩数据驱动、每天续写并以有界 AI 记忆维持连续性的故事日记；当前代码实现其事实采集底座。代码位置：`packages/StoryDataCollector`。
 - [context:fishing-bar-growth](contexts/fishing-bar-growth.md)：把有效鱼类捕获记录映射为原版钓鱼条成长奖励，并提供统计 HUD。代码位置：`packages/FishingBarGrowth`。
+- [context:aether-ring](contexts/aether-ring.md)：拥有以太多态戒指、武器熔铸与装备后光环攻击的业务语言和规则。代码位置：`packages/PolymorphicAetherRing`。
 
 ## 通用语言
 

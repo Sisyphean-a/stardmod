@@ -1,0 +1,11 @@
+{
+  "Name": "Polymorphic Aether Trinket",
+  "Author": "xixifu",
+  "Version": "1.8.0",
+  "Description": "A trinket that can absorb weapons and unleash a 360-degree combat aura.",
+  "UniqueID": "xixifu.PolymorphicAetherTrinket",
+  "EntryDll": "PolymorphicAetherRing.dll",
+  "MinimumApiVersion": "4.0.0",
+  "MinimumGameVersion": "1.6.0",
+  "UpdateKeys": ["Nexus:40365"]
+}

@@ -14,6 +14,7 @@
 | [`PortableLoadingOptimizer`](packages/PortableLoadingOptimizer) | `1.0.0` | xixifu | `xixifu.PortableLoadingOptimizer` | `PortableLoadingOptimizer.dll` | `4.0.0` |
 | [`StoryDataCollector`](packages/StoryDataCollector) | `1.1.1` | xixifu | `xixifu.StoryDataCollector` | `StoryDataCollector.dll` | `4.0.0` |
 | [`FishingBarGrowth`](packages/FishingBarGrowth) | `1.3.1` | xixifu | `xixifu.FishingBarGrowth` | `FishingBarGrowth.dll` | `4.0.0` |
+| [`PolymorphicAetherRing`](packages/PolymorphicAetherRing) | `1.8.0` | xixifu | `xixifu.PolymorphicAetherTrinket` | `PolymorphicAetherRing.dll` | `4.0.0` |
 
 | 包 | 定位 | 配置入口 |
 | --- | --- | --- |
@@ -23,6 +24,7 @@
 | `PortableLoadingOptimizer` | 面向 Windows 与 Android 的保守加载优化。 | [config.json](packages/PortableLoadingOptimizer/config.json) |
 | `StoryDataCollector` | 按时间线采集每天的地点、社交、交易、剧情事件和重要状态变化。 | [config.json](packages/StoryDataCollector/config.json) |
 | `FishingBarGrowth` | 根据有效鱼类捕获总数增加钓鱼条长度，并显示统计 HUD。 | [config.json](packages/FishingBarGrowth/config.json)，可选 GMCM |
+| `PolymorphicAetherRing` | 吸收近战武器并用已装备戒指发动 360 度光环攻击。 | [config.json](packages/PolymorphicAetherRing/config.json)，可选 GMCM |
 
 所有包的目标框架都是 `net6.0`。包描述、版本、作者、`UniqueID` 和入口 DLL 发生变化时，应以对应的 `manifest.json` 为准。
 
@@ -41,6 +43,7 @@
 - [`PortableLoadingOptimizer/config.json`](packages/PortableLoadingOptimizer/config.json)：预读预算和快速传送策略。
 - [`StoryDataCollector/config.json`](packages/StoryDataCollector/config.json)：事实、事件和叙事输入的采集上限。
 - [`FishingBarGrowth/config.json`](packages/FishingBarGrowth/config.json)：鱼数换算、钓鱼条上限和 HUD 设置。
+- [`PolymorphicAetherRing/config.json`](packages/PolymorphicAetherRing/config.json)：光环伤害、范围、冷却、返还武器和 Android 长按设置。
 
 ### 可选的 GMCM 集成
 
@@ -48,6 +51,7 @@
 - `HotkeyViewer`：没有 GMCM 时仍可通过 `config.json` 修改打开键，但查看其他 Mod 快捷键时会更多依赖 `config.json` 推测。
 - `HorseFollower`：当前只提供 `config.json` 配置，没有注册 GMCM 设置页。
 - `FishingBarGrowth`：没有 GMCM 时主体功能仍会加载，但只能通过 `config.json` 修改配置。
+- `PolymorphicAetherRing`：没有 GMCM 时主体功能仍会加载，但只能通过 `config.json` 修改配置。
 
 ## 各包功能
 
@@ -148,6 +152,26 @@ Toolbox 会检测下列独立版本，并跳过对应的内置实现。它们不
 
 用户与开发文档：[`packages/FishingBarGrowth/README.md`](packages/FishingBarGrowth/README.md)、[`packages/FishingBarGrowth/开发说明.md`](packages/FishingBarGrowth/开发说明.md)、[`packages/FishingBarGrowth/调试指南.md`](packages/FishingBarGrowth/调试指南.md)
 
+### PolymorphicAetherRing
+
+`PolymorphicAetherRing`（`xixifu.PolymorphicAetherTrinket`，当前版本 `1.8.0`）提供一个可吸收近战武器的以太多态戒指：熔铸后，装备戒指即可按武器属性和附魔对范围内全部存活怪物发动 360 度光环攻击。
+
+- 首次读档时检查背包、装备槽和组合戒指；已有戒指只补记领取标记，否则赠送戒指。
+- 熔铸保存武器 ID、战斗属性、附魔类型和等级；可选地在熔铸新武器时按原版复制语义返还旧武器，背包满时掉落到玩家位置。
+- 桌面端使用放大的熔铸面板，Android 或小于 `1064×768` 的视口使用支持长按、滚动和触控命中的紧凑面板。
+- 戒指悬浮说明显示熔铸武器属性和附魔；损坏数据会保留并禁止覆盖，避免静默丢失原有武器。
+- GMCM 为可选依赖；没有 GMCM 时仍可直接编辑 `config.json`。本包提供英文、简体中文、繁体中文和日文翻译。
+
+配置文件：[`packages/PolymorphicAetherRing/config.json`](packages/PolymorphicAetherRing/config.json)
+
+回归测试（测试项目按工作区惯例不加入主解决方案）：
+
+```powershell
+dotnet test packages/PolymorphicAetherRing.Tests/PolymorphicAetherRing.Tests.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
+```
+
+变更记录：[`packages/PolymorphicAetherRing/CHANGELOG.md`](packages/PolymorphicAetherRing/CHANGELOG.md)
+
 ## 项目结构
 
 ```text
@@ -158,8 +182,9 @@ packages/
 ├── HorseFollower/       # 马匹跟随；骑乘自动导航当前关闭
 ├── HotkeyViewer/        # 快捷键查看器
 ├── PortableLoadingOptimizer/ # 跨平台加载优化器
-├── StoryDataCollector/   # 故事数据采集器
-└── FishingBarGrowth/     # 钓鱼条成长
+├── StoryDataCollector/        # 故事数据采集器
+├── FishingBarGrowth/          # 钓鱼条成长
+└── PolymorphicAetherRing/     # 以太多态戒指
 ```
 
 每个包通常包含：
@@ -189,6 +214,7 @@ dotnet build packages/HotkeyViewer/HotkeyViewer.csproj -c Release -p:GamePath="D
 dotnet build packages/PortableLoadingOptimizer/PortableLoadingOptimizer.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
 dotnet build packages/StoryDataCollector/StoryDataCollector.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
 dotnet build packages/FishingBarGrowth/FishingBarGrowth.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
+dotnet build packages/PolymorphicAetherRing/PolymorphicAetherRing.csproj -c Release -p:GamePath="D:\Games\Stardew Valley"
 ```
 
 构建完成后，完整可部署包位于对应的 `packages/<Package>/dist/`。其中：
@@ -205,3 +231,5 @@ dotnet build packages/FishingBarGrowth/FishingBarGrowth.csproj -c Release -p:Gam
 - [跨平台加载优化器包说明](.codestable/architecture/packages/portable-loading-optimizer.md)
 - [故事数据采集器包说明](.codestable/architecture/packages/story-data-collector.md)
 - [钓鱼条成长包说明](.codestable/architecture/packages/fishing-bar-growth.md)
+- [以太多态戒指包说明](.codestable/architecture/packages/polymorphic-aether-ring.md)
+- [以太多态戒指领域上下文](.codestable/requirements/contexts/aether-ring.md)
